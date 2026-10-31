@@ -73,11 +73,13 @@ def lines_of(words):
 
 BIKES = 'DUCATI|APRILIA|KTM|HONDA|YAMAHA'
 DOC_KINDS = ['analysis', 'class', 'best', 'maxspd', 'avgspd', 'fast']                       # the six reports every session has (pending-circuit cards count these)
+EVENT_KINDS = ['entry', 'bio', 'circuit', 'evtspd']                                          # event-level reports (not tied to one session, any folder)
 EXTRA_KINDS = ['grid', 'qres', 'comb', 'fastrider', 'lapchart', 'bylap']                   # reports that only some sessions have
 DOC_LABEL = {'analysis': 'Analysis', 'class': 'Classification', 'best': 'Best Partial Times', 'maxspd': 'Maximum Speed', 'avgspd': 'Top Speed & Average', 'fast': 'Fastest Laps Sequence',
-             'grid': 'Starting Grid', 'qres': 'Qualifying Results', 'comb': 'Combined Practice Times', 'fastrider': 'Fastest Lap of each Rider', 'lapchart': 'Lap Chart', 'bylap': 'Analysis by Lap'}
-IGNORED_TITLES = ('WORLD CHAMPIONSHIP', 'EVENT BEST', 'ENTRY LIST', 'AWARD')               # bundle pages that carry no timing data we use
-TITLE_KINDS = (('CHRONOLOGICAL ANALYSIS', 'analysis'), ('ANALYSIS BY LAP', 'bylap'), ('BEST PARTIAL', 'best'), ('TOP SPEED & AVERAGE', 'avgspd'), ('TOP SPEED AND AVERAGE', 'avgspd'),
+             'grid': 'Starting Grid', 'qres': 'Qualifying Results', 'comb': 'Combined Practice Times', 'fastrider': 'Fastest Lap of each Rider', 'lapchart': 'Lap Chart', 'bylap': 'Analysis by Lap',
+             'entry': 'Entry List', 'bio': 'Rider Statistics (Biographical)', 'circuit': 'Circuit Information', 'evtspd': 'Event Best Maximum Speed'}
+IGNORED_TITLES = ('WORLD CHAMPIONSHIP', 'QUALIFYING SESSION ENTRY', 'AWARD')               # bundle pages that carry no timing data we use
+TITLE_KINDS = (('EVENT BEST MAXIMUM SPEED', 'evtspd'), ('CIRCUIT INFORMATION', 'circuit'), ('RIDER STATISTICS', 'bio'), ('ENTRY LIST', 'entry'), ('CHRONOLOGICAL ANALYSIS', 'analysis'), ('ANALYSIS BY LAP', 'bylap'), ('BEST PARTIAL', 'best'), ('TOP SPEED & AVERAGE', 'avgspd'), ('TOP SPEED AND AVERAGE', 'avgspd'),
                ('TOP SPEED', 'maxspd'), ('MAXIMUM SPEED', 'maxspd'), ('FASTEST LAP OF EACH', 'fastrider'), ('FASTEST LAP', 'fast'), ('STARTING GRID', 'grid'),
                ('QUALIFYING RESULTS', 'qres'), ('COMBINED PRACTICE', 'comb'), ('LAP CHART', 'lapchart'), ('CLASSIFICATION', 'class'))
 
@@ -101,6 +103,7 @@ def detect_text(txt):
     elif 'PRACTICE' in title: sid = 'PR'
     if kind == 'grid': sid = 'SPR' if 'SPRINT' in first else 'RAC'            # a starting grid belongs to the race it starts, whatever folder it sits in
     elif kind == 'qres': sid = 'Q2'
+    elif kind in EVENT_KINDS: sid = 'EVT'
     return sid, kind
 
 def sections(path):
@@ -118,6 +121,8 @@ def sections(path):
                 cur = {'sid': sid, 'kind': kind, 'path': path, 'pages': [i], 'texts': {i: txt}}; out.append(cur)
             elif cur and cur['kind'] == 'analysis' and re.search(r'Lap\s+Lap Time\s+T1', txt):
                 cur['pages'].append(i); cur['texts'][i] = txt
+            elif cur and cur['kind'] == 'bio' and txt.lstrip().startswith('Rider Date'):
+                cur['pages'].append(i); cur['texts'][i] = txt
             else:
                 cur = cur if (cur and cur['kind'] != 'analysis') else None
     except Exception as e:
@@ -126,7 +131,7 @@ def sections(path):
     folder = FOLDER_SID.get(path.parent.name.upper())                        # MALASYA/<sesión>/...
     for s in out:
         if fm: s['sid'] = fm.group(1)
-        elif folder and s['kind'] != 'grid': s['sid'] = folder
+        elif folder and s['kind'] != 'grid' and s['kind'] not in EVENT_KINDS: s['sid'] = folder
     return out
 
 def scan_pdfs(pdf_dir):
@@ -372,6 +377,86 @@ def parse_lapchart(txt):
         else: laps.append((int(m.group(1)), nums))
     laps.sort(key=lambda x: x[0])
     return {'grid': grid, 'laps': [n for _, n in laps]}
+
+SESS_NAMES = {'free practice nr. 1': 'FP1', 'free practice nr. 2': 'FP2', 'practice': 'PR', 'qualifying nr. 1': 'Q1', 'qualifying nr. 2': 'Q2', 'tissot sprint': 'SPR', 'race': 'RAC'}
+
+def parse_entry(txt):
+    """Entry List -> {num: {surname, first, abbr, nat, team, bike, flag: ''|'r'|'W'|'R', replaces}}. r = rookie, W = wildcard, R(n) = substitute of rider n."""
+    out = {}
+    rx = re.compile(r"^(?:(r|W|R\((\d+)\))\s+)?(\d+)\s+(.+?)\s+\((\S+)\)\s+(%s)\s+(.+)\s+(%s)$" % (NATS, BIKES))
+    for ln in txt.split('\n'):
+        m = rx.match(ln.strip())
+        if not m: continue
+        fl, rep_, num, nm, ab, nat, team, bike = m.groups()
+        parts = nm.split(); k = next((i for i, w in enumerate(parts) if not w.isupper() and w.upper() != w), len(parts))
+        out[int(num)] = {'surname': ' '.join(parts[:k]), 'first': ' '.join(parts[k:]), 'abbr': ab, 'nat': nat, 'team': team, 'bike': bike,
+                         'flag': ('R' if fl and fl.startswith('R(') else fl) or '', 'replaces': int(rep_) if rep_ else None}
+    return out
+
+BIO_COLS = {'starts': 346.5, 'wins': 373, 'poles': 399, 'fast': 429.5, 'pod': 465, 'bf': 500, 'bg': 528, 'titles': 581, 'wc25': 733.5, 'race25': 761.5, 'grid25': 785.5}
+
+def parse_bio(sec):
+    """Rider Statistics -> {num: {age, starts, wins, poles, fast, pod, bf, bg, titles, wc25, race25, grid25}} for the MotoGP row of each rider
+    (career figures; wc25 = 2025 championship position, race25/grid25 = result / grid at THIS circuit in 2025). Columns are read by x position
+    because empty cells are blank."""
+    out = {}
+    pdf = pdfplumber.open(sec['path'])
+    for pi in sec['pages']:
+        ws = [w for w in pdf.pages[pi].extract_words() if 40 < w['top'] < 760]
+        for top, l in lines_of(ws):
+            m = re.match(r"^(\d+)([A-Z]\.\S.*)$", l[0]['text'])
+            if not m or not any(w['text'] == 'MotoGP' for w in l): continue
+            rec = {}
+            for w in l:
+                c = (w['x0'] + w['x1']) / 2
+                if 214 < w['x0'] < 230 and w['text'].isdigit(): rec['age'] = int(w['text'])
+                if 330 < w['x0'] < 620 or w['x0'] >= 720:
+                    col = min(BIO_COLS, key=lambda k: abs(BIO_COLS[k] - c))
+                    if abs(BIO_COLS[col] - c) < 14 and col not in rec and re.fullmatch(r"\d+|'\d+(,'\d+)*", w['text']): rec[col] = int(w['text']) if w['text'].isdigit() else w['text']
+            out[int(m.group(1))] = rec
+    return out
+
+def parse_evtspd(txt):
+    """Event Best Maximum Speed -> {num: {kmh, sid}} (best top speed of each rider over the weekend and the session where it happened)."""
+    out = {}
+    for ln in txt.split('\n'):
+        m = re.match(r"^(\d+)\s+.+?\s+(%s)\s+.+\s+(%s)\s+(\d{3}\.\d)\s+(.+)$" % (NATS, BIKES), ln.strip())
+        if m: out[int(m.group(1))] = {'kmh': float(m.group(4)), 'sid': SESS_NAMES.get(m.group(5).strip().lower())}
+    return out
+
+def parse_circuit(txt):
+    """Circuit Information -> geometry + MotoGP records and last year's references."""
+    def lap(rx, t=txt):
+        m = re.search(rx + r"\s+(\d{4})?\s*([A-Za-z\u00c0-\u00ff' .-]+?)\s+\((\w{3})\)\s+(\w+)\s+(\d+'\d+\.\d{3})\s+(\d+\.\d)", t)
+        return m
+    head = txt.split('Moto2 All-Time')[0]
+    info = {}
+    for key, rx in (('width', r"Width\s+(\d+)"), ('right', r"Right corners\s+(\d+)"), ('left', r"Left corners\s+(\d+)"), ('straight', r"Longest straight\s+(\d+)"), ('built', r"Constructed\s+(\d{4})")):
+        m = re.search(rx, txt)
+        if m: info[key] = int(m.group(1))
+    m = re.search(r"Pole position\s+(Left|Right)", txt)
+    if m: info['poleSide'] = m.group(1)
+    recs = {}
+    for key, label in (('lap', 'All-Time Lap Record'), ('race', 'Best Race Lap'), ('pole', 'Best Pole')):
+        m = re.search(label + r"\s+(\d{4})\s+(.+?)\s+\((\w{3})\)\s+(\w+)\s+(\d+'\d+\.\d{3})\s+(\d+\.\d)", head)
+        if m: recs[key] = {'year': int(m.group(1)), 'who': m.group(2), 'bike': m.group(4), 't': t2s(m.group(5)), 'kmh': float(m.group(6))}
+    m = re.search(r"Top Speed\s+(\d{4})\s+(.+?)\s+\((\w{3})\)\s+(\w+)\s+(\d{3}\.\d)", head)
+    if m: recs['vmax'] = {'year': m.group(1) and int(m.group(1)), 'who': m.group(2), 'bike': m.group(4), 'kmh': float(m.group(5))}
+    y25 = {}
+    tail = txt.split('2025 Info')[1].split('Moto2')[0] if '2025 Info' in txt else ''
+    for key, label in (('bestLap', 'MotoGP Best Lap'), ('raceLap', 'Race fastest lap'), ('pole', 'Pole position')):
+        m = re.search(label + r"\s+(.+?)\s+\((\w{3})\)\s+(\w+)\s+(\d+'\d+\.\d{3})\s+(\d+\.\d)", tail)
+        if m: y25[key] = {'who': m.group(1), 't': t2s(m.group(4)), 'kmh': float(m.group(5))}
+    m = re.search(r"Top Speed\s+(.+?)\s+\((\w{3})\)\s+(\w+)\s+(\d{3}\.\d)", tail)
+    if m: y25['vmax'] = {'who': m.group(1), 'kmh': float(m.group(4))}
+    pod = re.findall(r"\b([123])\.\s*([A-Za-z ]+?)\s*\(\w{3}\)", tail)
+    seen = {}
+    for pos, who in pod:
+        seen.setdefault(int(pos), who.strip())
+    if len(seen) == 3: y25['podium'] = [seen[1], seen[2], seen[3]]
+    ln = re.search(r"Length\s+([\d,]+)\s*m", txt)
+    if ln: info['lengthM'] = int(ln.group(1).replace(',', ''))
+    return {'info': info, 'records': recs, 'y25': y25}
 
 # =====================================================================================================
 #  Helpers on compact laps
@@ -664,6 +749,7 @@ def build_circuit(circ):
         m = meta[n]; hue = (i * 137.508) % 360; name = m['name'].replace('�', 'Ñ')
         riders.append({'num': n, 'name': name, 'short': SHORT.get(n, name.split()[-1]), 'team': m['team'], 'bike': m['bike'], 'nat': m['nat'],
                        'color': 'hsl(%d,78%%,%d%%)' % (hue, 58 if i % 2 == 0 else 66)})
+    # (rider enrichment from the event-level documents happens after they are parsed, see below)
     # --- real sessions (compact laps + official reports)
     real_sessions = {}
     for sid, lb in real_laps.items():
@@ -702,6 +788,24 @@ def build_circuit(circ):
             else: log(f'    {sid}: resultado calculado sumando vueltas del Analysis (la Classification no se pudo leer/validar)')
         real_sessions[sid] = s
     fri = {k: real_laps[k] for k in ('FP1', 'PR')}
+    # --- event-level documents (Entry list, rider statistics, circuit information, event top speeds): any folder, newest wins
+    evt = found.get('EVT', {}); event = {}; edocs = {}
+    for k in EVENT_KINDS:
+        if k in evt: edocs[k] = str(evt[k]['path'].relative_to(evt[k]['root'])).replace(chr(92), '/')
+    if 'entry' in evt: event['entry'] = parse_entry(sec_text(evt['entry']))
+    if 'bio' in evt: event['bio'] = parse_bio(evt['bio'])
+    if 'evtspd' in evt: event['evtspd'] = parse_evtspd(sec_text(evt['evtspd']))
+    if 'circuit' in evt: event['circuit'] = parse_circuit(sec_text(evt['circuit']))
+    if event:
+        log('  Evento: ' + ', '.join(f'{DOC_LABEL[k]}' for k in EVENT_KINDS if k in evt) + ' -> ' + ', '.join(
+            f'{k} {len(v)}' if isinstance(v, dict) and k != 'circuit' else k for k, v in event.items()))
+        if 'bio' in event: log(f'  Rider Statistics: {len(event["bio"])} pilotos, clasificacion 2025 en {sum(1 for r in event["bio"].values() if "wc25" in r)}')
+        if 'evtspd' in event:
+            ok = tot = 0
+            for n, v in event['evtspd'].items():
+                mx = max([l['v'] for sd in real_laps.values() for l in sd.get(n, []) if l['v']] or [0])
+                if mx: tot += 1; ok += abs(mx - v['kmh']) < 0.05
+            if tot: log(f'  Event Max Speed vs maximos de las sesiones: {ok}/{tot} (el resto: la punta del evento sale de una vuelta fuera de nuestro Analysis)')
     # --- official starting grids (Q2/Grid.pdf = Sunday grid, SPRINT/Grid.pdf = Sprint grid): authoritative slot of every rider (penalties included) + who starts
     names = {n: m['name'] for n, m in meta.items()}
     qord = real_sessions['Q2']['order'] + [n for n in real_sessions.get('Q1', {}).get('order', []) if n not in real_sessions['Q2']['order']] if 'Q2' in real_sessions else []
@@ -759,7 +863,20 @@ def build_circuit(circ):
     for s in sim_sessions.values(): s['riders'] = compact_riders(s['riders'], nums)
     sessions = {sid: real_sessions.get(sid) or sim_sessions[sid] for sid in SIDS}
     simulated_overrides = {sid: sim_sessions[sid] for sid in SIM_SIDS if sid in real_sessions}
+    ent, bio = event.get('entry', {}), event.get('bio', {})
+    subs = {v['replaces'] for v in ent.values() if v.get('replaces')}
+    for r in riders:
+        e, b = ent.get(r['num'], {}), bio.get(r['num'])
+        if e.get('flag'): r['flag'] = e['flag']
+        if e.get('replaces'): r['replaces'] = e['replaces']; r['replacesName'] = (ent.get(e['replaces']) or {}).get('surname', '#%d' % e['replaces'])
+        if b: r['bio'] = b
+    event['outOfEvent'] = {str(n): (ent.get(n) or {}).get('surname') for n in subs}
     cinfo = {k: circ[k] for k in ('id', 'folder', 'flag', 'short', 'name', 'gp', 'length', 'record', 'weather')}
+    if 'circuit' in event:
+        ci = event['circuit']; cinfo['info'] = ci['info']; cinfo['records'] = ci['records']; cinfo['y25'] = ci['y25']
+        lr = ci['records'].get('lap')
+        if lr: cinfo['record'] = {'t': lr['t'], 'who': lr['who'], 'year': lr['year']}
+        if ci['info'].get('lengthM') and abs(ci['info']['lengthM'] / 1000 - circ['length']) > 0.002: log(f'  ! Longitud del PDF {ci["info"]["lengthM"]} m distinta de la tabla ({circ["length"]} km)')
     cinfo.update(sprintLaps=sprl, raceLaps=racl, lapsEstimated={'SPR': 'SPR' not in real_sessions and 'SPR' not in grids, 'RAC': 'RAC' not in real_sessions and 'RAC' not in grids})
     wsid = next((x for x in reversed(SIDS) if x in real_sessions and real_sessions[x]['official'].get('cond')), None)      # header weather = latest real session
     if wsid: c_ = real_sessions[wsid]['official']['cond']; cinfo['weather'] = {'air': c_.get('air'), 'hum': c_.get('hum'), 'ground': c_.get('ground'), 'cond': c_.get('cond'), 'sid': wsid}
@@ -768,10 +885,10 @@ def build_circuit(circ):
         if gs == 'SPR' and 'SPR' in real_sessions: real_sessions['SPR']['official']['docs']['grid'] = g['doc']
     return {
         'circuit': cinfo,
-        'riders': riders, 'sessions': sessions, 'sim': simulated_overrides, 'grids': grids,
+        'riders': riders, 'sessions': sessions, 'sim': simulated_overrides, 'grids': grids, 'event': {k: v for k, v in event.items() if k in ('entry', 'bio', 'evtspd', 'outOfEvent')},
         'meta': {'real': [s for s in SIDS if s in real_sessions], 'built': time.strftime('%Y-%m-%d %H:%M:%S'),
                  'sources': {s: real_sessions[s]['source'] for s in real_sessions},
-                 'docs': {s: real_sessions[s]['official']['docs'] for s in real_sessions},
+                 'docs': {s: real_sessions[s]['official']['docs'] for s in real_sessions}, 'eventDocs': edocs,
                  'validation': {s: real_sessions[s]['official']['validation'] for s in real_sessions}},
     }, info
 

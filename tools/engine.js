@@ -28,9 +28,15 @@ const RIDER = Object.fromEntries(R.map(r => [r.num, r]));
 const NUMS = R.map(r => r.num);
 
 const median = a => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+/* weak prior from the Entry/Rider Statistics PDFs: position in the 2025 championship. Practice stints are short and noisy, so Sprint/Race pace is nudged
+   PRIOR_WC s/lap per place away from the field median (clamped). 0.02 is half of what fits the first real Sprint of the season: re-check with more races. */
+const PRIOR_WC = 0.02;
+const WC = Object.fromEntries(R.filter(r => r.bio && r.bio.wc25).map(r => [r.num, r.bio.wc25]));
 const mean = a => a.reduce((x, y) => x + y, 0) / (a.length || 1);
 const stdev = a => { if (a.length < 2) return 0; const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
 const sum = a => a.reduce((x, y) => x + y, 0);
+const WC_MED = median(Object.values(WC));
+const priorOf = n => (WC[n] != null && isFinite(WC_MED)) ? clamp(PRIOR_WC * (WC[n] - WC_MED), -0.25, 0.25) : 0;
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 function linreg(xs, ys) {
   const n = xs.length; if (n < 2) return { a: ys[0] || 0, b: 0 };
@@ -260,8 +266,8 @@ function predictions(mid) {
   else {
     sprint.rows = NUMS.filter(hasData).filter(starter(ctx.gridS, ctx.gridOff.SPR)).map(n => {
       const e = sprEstBy[n], pen = 0.10 * (gpS(n) - 1) - 0.003 * ((A[n].vtop5 || vmed) - vmed) * (N1 - 1);
-      const T = totalTime(e.a + evo, e.b, N1, pen);
-      return { num: n, T, pace: paceOf(e.a + evo, e.b, N1), deg: e.b, sd: e.sd, mode: e.mode, len: e.len, conf: confOf(e, A[n].nPush, ctx.gridOff.SPR ? 6 : ctx.grid ? 4 : 0), grid: gpS(n) };
+      const pr = priorOf(n), T = totalTime(e.a + evo + pr, e.b, N1, pen);
+      return { num: n, T, prior: pr, pace: paceOf(e.a + evo + pr, e.b, N1), deg: e.b, sd: e.sd, mode: e.mode, len: e.len, conf: confOf(e, A[n].nPush, ctx.gridOff.SPR ? 6 : ctx.grid ? 4 : 0), grid: gpS(n) };
     }).sort((x, y) => x.T - y.T);
     const w = sprint.rows[0].T; sprint.rows.forEach((r, i) => { r.pos = i + 1; r.gap = r.T - w; });
   }
@@ -273,8 +279,8 @@ function predictions(mid) {
       let sprS = null;
       if (sprKnown && !incidentsOf(SD, 'SPR', n).length) { const s = realRaceStint('SPR', n); if (s) sprS = { a: s.a, b: s.b, len: s.len }; }   // a Sprint with a pit stop / crash says nothing about that rider's race pace
       const e = raceEst(A[n], sprS), pen = 0.06 * (gpR(n) - 1) - 0.003 * ((A[n].vtop5 || vmed) - vmed) * (N2 - 1);
-      const T = totalTime(e.a + evo, e.b, N2, pen);
-      return { num: n, T, pace: paceOf(e.a + evo, e.b, N2), deg: e.b, sd: e.sd, mode: e.mode, len: e.len, conf: confOf(e, A[n].nPush, (sprKnown ? 4 : 0) + (ctx.gridOff.RAC ? 2 : 0)), grid: gpR(n), vmax: A[n].vmax };
+      const pr = priorOf(n), T = totalTime(e.a + evo + pr, e.b, N2, pen);
+      return { num: n, T, prior: pr, pace: paceOf(e.a + evo + pr, e.b, N2), deg: e.b, sd: e.sd, mode: e.mode, len: e.len, conf: confOf(e, A[n].nPush, (sprKnown ? 4 : 0) + (ctx.gridOff.RAC ? 2 : 0)), grid: gpR(n), vmax: A[n].vmax };
     }).sort((x, y) => x.T - y.T);
     const w = race.rows[0].T; race.rows.forEach((r, i) => { r.pos = i + 1; r.gap = r.T - w; });
   }

@@ -105,10 +105,46 @@ function RiderPanel({ sel, setSel, snap }) {
         <label className={'flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-xs hover:bg-[#161c25] ' + (sel.includes(n) ? 'bg-[#141a22]' : '')}>
           <input type="checkbox" className="accent-red-600" checked={sel.includes(n)} onChange={() => toggle(n)} />
           <Dot n={n} /><span className="tabular-nums text-slate-500 w-6">{n}</span>
-          <span className="truncate text-slate-200 flex-1">{RIDER[n].short}</span>
+          <span className="truncate text-slate-200 flex-1" title={bioTip(n)}>{RIDER[n].short}{riderTags(n)}</span>
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: BIKE_COL[RIDER[n].bike] }} title={RIDER[n].bike} />
         </label></li>)}
     </ul>
+  </Panel>;
+}
+
+const bioTip = n => { const r = RIDER[n], b = r.bio; return [r.name, b && b.age ? b.age + ' años' : null, b && b.starts ? b.starts + ' GP en MotoGP' : null, b && b.wins ? b.wins + ' victorias' : null, b && b.wc25 ? 'Mundial 2025: ' + b.wc25 + 'º' : null,
+  b && b.race25 ? 'Carrera aquí 2025: ' + b.race25 + 'º' : null, r.replaces ? 'Sustituto de ' + r.replacesName : null, r.flag === 'r' ? 'Novato' : null, r.flag === 'W' ? 'Wildcard' : null].filter(Boolean).join(' · '); };
+const riderTags = n => { const r = RIDER[n]; return <>{r.replaces && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30" title={'Sustituto de ' + r.replacesName}>SUST</span>}
+  {r.flag === 'r' && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" title="Novato">NOV</span>}
+  {r.flag === 'W' && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30" title="Wildcard">WC</span>}</>; };
+
+/* ---------- Ficha del circuito (Circuit Information PDF) ---------- */
+function CircuitCard({ M }) {
+  const c = DATA.circuit, i = c.info, rec = c.records, y = c.y25;
+  if (!i) return null;
+  const has = s => M.sessions.includes(s) && SD[s].real;
+  const poleT = has('Q2') ? SNAP.SAT.pole.rows[0] : null;
+  const spr = has('SPR') && SD.SPR.results && SD.SPR.results[0] && SD.SPR.results[0].time ? SD.SPR.results[0] : null;
+  const sprLap = spr ? spr.time / SD.SPR.nlaps : null;
+  const evs = DATA.event && DATA.event.evtspd ? Object.entries(DATA.event.evtspd).filter(([, v]) => M.sessions.includes(v.sid)).sort((a, b) => b[1].kmh - a[1].kmh)[0] : null;
+  const d = (a, b) => (a - b >= 0 ? '+' : '') + (a - b).toFixed(3);
+  const item = (l, v, sub) => <div className="rounded border border-[#1f2630] bg-[#0d1117] px-3 py-2"><div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{l}</div><div className="text-sm font-bold text-slate-100 tabular-nums">{v}</div>{sub && <div className="text-[11px] text-slate-400">{sub}</div>}</div>;
+  return <Panel title="Ficha del circuito" right={<span className="text-[11px] text-slate-500">Circuit Information · {DATA.meta.eventDocs && DATA.meta.eventDocs.circuit}</span>}>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+      {item('Trazado', `${c.length} km · ${i.width} m`, `${i.right} curvas a derechas · ${i.left} a izquierdas · inaugurado ${i.built}`)}
+      {item('Recta más larga', `${i.straight} m`, `Pole a la ${i.poleSide === 'Left' ? 'izquierda' : 'derecha'}`)}
+      {rec && rec.lap && item('Récord absoluto', fmtLap(rec.lap.t), `${rec.lap.who} · ${rec.lap.year}`)}
+      {rec && rec.vmax && item('Punta récord', rec.vmax.kmh.toFixed(1) + ' km/h', `${rec.vmax.who} · ${rec.vmax.year}`)}
+      {y && y.pole && item('Pole 2025', fmtLap(y.pole.t), y.pole.who)}
+      {y && y.raceLap && item('Mejor vuelta carrera 2025', fmtLap(y.raceLap.t), y.raceLap.who)}
+      {y && y.podium && item('Podio 2025', y.podium.map(x => x.split(' ')[0][0] + '.' + x.split(' ').pop()).join(' · '), 'este circuito')}
+      {rec && rec.pole && item('Mejor pole histórica', fmtLap(rec.pole.t), `${rec.pole.who} · ${rec.pole.year}`)}
+    </div>
+    {(poleT || spr || evs) && <div className="mt-3 text-xs text-slate-300 space-y-1">
+      {poleT && poleT.T && <div><b className="text-sky-300">Pole {SD.Q2.real ? 'real' : ''} {fmtLap(poleT.T)}</b> ({mm(poleT.num)}): {rec && rec.lap ? <><b className="tabular-nums">{d(poleT.T, rec.lap.t)} s</b> vs récord</> : null}{y && y.pole ? <> · <b className="tabular-nums">{d(poleT.T, y.pole.t)} s</b> vs pole 2025</> : null}.</div>}
+      {sprLap && y && y.raceLap && <div><b className="text-sky-300">Ritmo medio del ganador de la Sprint {fmtLap(sprLap)}</b> ({mm(spr.num)}): <b className="tabular-nums">{d(sprLap, y.raceLap.t)} s</b> sobre la mejor vuelta de carrera 2025 (incluye salida y degradación).</div>}
+      {evs && rec && rec.vmax && <div><b className="text-sky-300">Mejor punta del fin de semana {evs[1].kmh.toFixed(1)} km/h</b> ({mm(+evs[0])}, {SESS[evs[1].sid].label}): {Math.abs(evs[1].kmh - rec.vmax.kmh) < 0.05 ? 'iguala el récord.' : (evs[1].kmh - rec.vmax.kmh).toFixed(1) + ' km/h respecto al récord.'}</div>}
+    </div>}
   </Panel>;
 }
 
@@ -130,6 +166,7 @@ function Resumen({ snap, prev, M, sel, goPace }) {
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       {TARGETS.map(([t]) => <PodiumCard key={t} target={t} snap={snap} prev={prev} onOpen={() => goPace(t)} />)}
     </div>
+    <CircuitCard M={M} />
     <DocsPanel M={M} />
   </div>;
 }
@@ -222,8 +259,21 @@ function Telemetria({ snap, M, sel, view }) {
       </table></div>
       {!order.length && <Empty />}
     </Panel>
+    <EventSpeed M={M} />
     <Panel title="Velocidad punta por sesión" right={<div className="flex gap-1.5"><Chip active={spm === 'max'} onClick={() => setSpm('max')}>Máxima</Chip><Chip active={spm === 'top5'} onClick={() => setSpm('top5')}>Media Top 5</Chip></div>}>{order.length ? <ChartCanvas type="bar" data={spData} options={spOpts} height={300} /> : <Empty />}</Panel>
   </div>;
+}
+function EventSpeed({ M }) {
+  const ev = DATA.event && DATA.event.evtspd; if (!ev) return null;
+  const rows = Object.entries(ev).filter(([n, v]) => RIDER[n] && M.sessions.includes(v.sid)).sort((a, b) => b[1].kmh - a[1].kmh);
+  if (!rows.length) return null;
+  const rec = DATA.circuit.records && DATA.circuit.records.vmax, top = rows[0][1].kmh, lo = Math.min(...rows.map(r => r[1].kmh)) - 4;
+  return <Panel title="Punta del evento (mejor de cada piloto)" right={<span className="text-[11px] text-slate-500">Event Best Maximum Speed · {rec ? `récord ${rec.kmh.toFixed(1)} km/h (${rec.who.split(' ').pop()} ${rec.year})` : ''}</span>}>
+    <div className="space-y-1">{rows.map(([n, v]) => <div key={n} className="flex items-center gap-2 text-xs"><span className="w-28 truncate text-slate-200"><Dot n={+n} /> {mm(+n)}</span>
+      <div className="flex-1 h-3 bg-[#0d1117] rounded overflow-hidden"><div className="h-full" style={{ width: (100 * (v.kmh - lo) / (top - lo)) + '%', background: RIDER[n].color }} /></div>
+      <span className="w-16 tabular-nums text-slate-100 text-right">{v.kmh.toFixed(1)}</span><span className="w-14 text-slate-500">{v.sid ? SESS[v.sid].label : '—'}</span></div>)}</div>
+    <p className="text-[11px] text-slate-500 mt-2">Solo se muestran las puntas conseguidas en sesiones del hito seleccionado. Sirve de control cruzado con la punta que sale de cada Analysis y con el récord del circuito.</p>
+  </Panel>;
 }
 function FastSeq({ sid, view }) {
   const fast = SD[sid].official && SD[sid].official.fast;
@@ -271,6 +321,7 @@ function DocsPanel({ M }) {
           <td className="pr-3 text-[11px] text-slate-400" title={EXTRA.map(([k]) => docs[k]).filter(Boolean).join(' · ')}>{real ? EXTRA.filter(([k]) => docs[k]).map(([, l]) => l).join(' · ') || '—' : '·'}</td>
           <td className="text-[11px] text-slate-400">{real ? [v.cls && `Classification ${v.cls}`, v.ideal && `ideal oficial = depurado ${v.ideal}`, v.speed && `Vmax ${v.speed}`, v.fastrider && `Fast Lap Rider ${v.fastrider}`, v.qres && `Qualifying Results ${v.qres}`, v.winner && `tiempo del ganador = Σ vueltas ${v.winner}`].filter(Boolean).join(' · ') || '—' : 'simulada hasta que se suba su carpeta'}</td></tr>; })}</tbody>
     </table></div>
+    {DATA.meta.eventDocs && Object.keys(DATA.meta.eventDocs).length > 0 && <div className="mt-3 text-[11px] text-slate-400"><b className="text-sky-300">Documentos del evento</b> · {Object.entries(DATA.meta.eventDocs).map(([k, v]) => `${{ entry: 'Entry List', bio: 'Rider Statistics', circuit: 'Circuit Information', evtspd: 'Event Max Speed' }[k] || k} (${v})`).join(' · ')}{DATA.event && DATA.event.outOfEvent && Object.keys(DATA.event.outOfEvent).length > 0 ? ` · fuera del evento (sustituidos): ${Object.entries(DATA.event.outOfEvent).map(([n, nm]) => `${nm || ''} #${n}`).join(', ')}` : ''}</div>}
     {DATA.grids && Object.keys(DATA.grids).length > 0 && <div className="mt-3 text-[11px] text-slate-400 space-y-1">{Object.entries(DATA.grids).map(([k, g]) => { const mv = Object.entries(g.pen || {}).filter(([, d]) => d); const abs = NUMS.filter(n => !Object.values(DATA.grids).some(x => x.order.includes(n)));
       return <div key={k}><b className="text-sky-300">Parrilla {k === 'SPR' ? 'Sprint' : 'Carrera'}</b> · {g.doc} · {g.order.length} pilotos · {g.laps || '?'} vueltas · {mv.length ? 'cambios vs clasificación: ' + mv.map(([n, d]) => `${mm(+n)} ${d > 0 ? '▼' + d : '▲' + (-d)}`).join(', ') : 'sin cambios respecto a la clasificación (sin sanciones de parrilla)'}{abs.length > 0 && k === Object.keys(DATA.grids)[0] ? ` · no toman la salida: ${abs.map(n => mm(n) + ' #' + n).join(', ')}` : ''}</div>; })}</div>}
     <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">Cada piloto hereda su ritmo y sectores del <b className="text-slate-300">Analysis</b> (filtrado de out-laps, in-laps «P» y anuladas «*»), su vuelta ideal de los <b className="text-slate-300">Best Partial Times</b> (solo parciales confirmados por una vuelta limpia), su punta del <b className="text-slate-300">Top Speed</b> y la media de sus 5 mejores del <b className="text-slate-300">Top Speed &amp; Average</b>. La <b className="text-slate-300">Classification</b> fija resultados y orden de parrilla y el <b className="text-slate-300">Fastest Laps Sequence</b> la evolución de la sesión. «ideal oficial = depurado k/n»: en n pilotos el ideal oficial coincide con el recalculado solo con vueltas limpias; en el resto algún parcial oficial viene de una out/in-lap o de una vuelta anulada.</p>
@@ -310,7 +361,7 @@ function Ritmo({ snap, M, sel, target, setTarget }) {
   const degOpts = useMemo(() => ({ plugins: { legend: { display: false } }, scales: { y: axisT('s/vuelta') } }), []);
 
   const desc = { POLE: 'Mejor vuelta normalizada − 0,4·margen vs ideal + 0,35·σ(3 mejores) + penalización por pocas vueltas.',
-    SPR: 'Mediana de la mejor tanda corta (5-8 vtas, normalizada a Medium) + σ + degradación proyectada ×' + DATA.circuit.sprintLaps + ' vueltas + parrilla (oficial si hay Grid.pdf) y punta.',
+    SPR: 'Mediana de la mejor tanda corta (5-8 vtas, normalizada a Medium) + σ + degradación proyectada ×' + DATA.circuit.sprintLaps + ' vueltas + parrilla (oficial si hay Grid.pdf) y punta + prior leve por clasificación del Mundial 2025 (' + PRIOR_WC + ' s/vta por puesto).',
     RAC: 'Ritmo de tanda larga (>8 vtas) + degradación por regresión lineal proyectada ×' + DATA.circuit.raceLaps + ' vueltas + parrilla (oficial si hay Grid.pdf) y velocidad punta en recta.' }[target];
   return <div className="space-y-4">
     <Panel title="Simulación" right={<div className="flex gap-1.5">{TARGETS.map(([t, l]) => <Chip key={t} active={t === target} onClick={() => setTarget(t)}>{l}</Chip>)}</div>}>

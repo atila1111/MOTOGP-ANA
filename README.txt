@@ -128,6 +128,20 @@ cada informe por su TITULO interno.
    Analysis by Lap                    se reconocen y se guardan
                                       (sin uso en el modelo)
 
+   Informes del EVENTO (no son de una sesion; valen en cualquier carpeta,
+   por ejemplo SPRINT/):
+   Entry List                         pilotos inscritos, novatos (r),
+                                      wildcards (W) y sustitutos R(n);
+                                      marca a los sustituidos como fuera
+                                      del evento
+   Rider Statistics (Biographical)    edad, carrera, victorias y titulos de
+                                      cada piloto, puesto en el Mundial 2025
+                                      y resultado en este circuito en 2025
+   Circuit Information                trazado (anchura, curvas, recta mas
+                                      larga), records y referencias 2025
+   Event Best Maximum Speed           mejor punta de cada piloto en el fin
+                                      de semana y sesion en que la logro
+
 Tambien vale el PDF  Session.pdf  (paquete con varios informes): se
 trocea por paginas. Si ademas hay informes sueltos, los sueltos ganan;
 entre dos iguales gana el mas reciente.
@@ -172,7 +186,9 @@ cuando los hay o fuerza la simulacion limpia de todo el fin de semana.
 
 Pestanas:
    Resumen               Top 3 de Pole, Sprint y Domingo, con confianza,
-                         y trazabilidad de datos (que PDF y con que
+                         ficha del circuito (records, pole y ritmo de la
+                         Sprint frente a las referencias de 2025) y
+                         trazabilidad de datos (que PDF y con que
                          validacion cruzada se ha leido cada sesion).
    Telemetria            vueltas depuradas, sectores, vuelta ideal,
                          velocidades punta, evolucion de la sesion y,
@@ -189,6 +205,11 @@ Notas de lectura:
      distintas. Pilotos con 4 vueltas o menos en una sesion se ignoran.
    - MAE = error medio del ritmo por vuelta. "Atipico" = piloto cuya
      desviacion destaca una vez quitado el desfase comun del campo.
+   - Sprint y Carrera llevan un prior leve por el puesto de cada piloto
+     en el Mundial 2025 (Rider Statistics): 0,02 s/vuelta por puesto
+     respecto a la mediana, con tope de 0,25 s. Mejora el orden previsto
+     pero esta ajustado con una sola Sprint real; se puede anular poniendo
+     PRIOR_WC = 0 al inicio de tools/engine.js.
    - Las predicciones son simulaciones limpias: no contemplan meteo,
      caidas ni sanciones. El diagnostico solo SUGIERE causas; usa los
      datos oficiales (meteo e incidentes de la Classification) cuando

@@ -178,8 +178,13 @@ pasa de SIMULADO a REAL automaticamente.
 
 6. USO DEL PANEL
 ---------------------------------------------------------------------
-Cabecera: selector de circuito, y los 5 hitos del fin de semana. Al
-elegir un hito, el motor solo ve las sesiones anteriores o iguales.
+Cabecera (siempre visible al hacer scroll): selector de circuito, los 5
+hitos del fin de semana y la barra de SESION con FP1, PR, FP2, Q1, Q2,
+SPRINT y RACE, cada una marcada REAL o SIM. La sesion activa gobierna
+Telemetria y Sim vs Real; las sesiones aun no disputadas en el hito se
+muestran apagadas. Cada panel lleva junto al titulo una etiqueta con la
+sesion u objetivo a que se refieren sus datos (p. ej. "FP2 - REAL",
+"objetivo SPRINT", "datos hasta FP2").
 
 Interruptor "Real si existe / Solo simulacion": muestra los datos reales
 cuando los hay o fuerza la simulacion limpia de todo el fin de semana.
@@ -194,11 +199,37 @@ Pestanas:
                          velocidades punta, evolucion de la sesion y,
                          en Sprint/Carrera, direccion de carrera y salida.
    Ritmo & Simulacion    tablas de la prediccion, tandas y degradacion.
+   Simulador de carrera  simulacion Monte Carlo vuelta a vuelta de la
+                         Carrera (ver apartado 6.1)
    Prediccion vs         lo que se predijo en cada hito frente a la
    Realidad              realidad (real, o simulada si aun no hay PDF):
                          error por hito, tabla por piloto y diagnostico
                          de la desviacion.
    Sim vs Real           cada sesion simulada frente a su version real.
+
+6.1 Simulador de carrera
+    Parte de la prediccion de ritmo y degradacion mas reciente que aun no
+    conoce la carrera (si ya hay Sprint real, esta incluida) y simula la
+    carrera N veces (400 por defecto) con la parrilla oficial. Parametros:
+      - Condicion: SECO, MOJADO o FLAG-TO-FLAG (seco->mojado o
+        mojado->seco, con vuelta del cambio y perdida por cambio de moto).
+      - Estado de pista esperado: temperatura de pista, aire y humedad.
+        Botones para copiar las condiciones de FP2/Q2/Sprint y la prevision
+        del Met Office (Sepang, domingo 15:00: 33 C, 20% de lluvia), y
+        "Cargar prevision (Open-Meteo)" que consulta api.open-meteo.com
+        desde el navegador con las coordenadas del circuito y la fecha.
+        (Dos modelos pueden discrepar: en la prueba, Met Office daba 20% de
+        lluvia y Open-Meteo 75% para la misma hora.) La temperatura de pista
+        se estima como aire + 0,019 x radiacion solar.
+      - Supuestos editables: sensibilidad a la temperatura, penalizacion y
+        dispersion del mojado, tasa de caidas, incertidumbre del ritmo,
+        vueltas, numero de simulaciones y semilla.
+    Salida: % de victoria y podio, posicion media y P10-P90, % de abandono,
+    una carrera representativa (orden final, gap al lider y posicion por
+    vuelta). Los supuestos de temperatura y mojado NO estan calibrados con
+    carreras reales: sirven para comparar escenarios.
+    Los datos de previsión del circuito (coordenadas, fecha, enlace y
+    prevision manual) se editan en la lista CIRCUITS de tools/pipeline.py.
 
 Notas de lectura:
    - Ideal = suma de los mejores sectores aunque vengan de vueltas

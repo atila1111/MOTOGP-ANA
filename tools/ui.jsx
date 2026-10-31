@@ -1,4 +1,4 @@
-const { useState, useMemo, useEffect, useRef } = React;
+const { useState, useMemo, useEffect, useRef, useContext } = React;
 
 /* ---------- theme / chart defaults ---------- */
 Chart.defaults.color = '#8a93a3';
@@ -10,7 +10,7 @@ Chart.defaults.plugins.tooltip.backgroundColor = '#0b0d10';
 Chart.defaults.plugins.tooltip.borderColor = '#2a313c';
 Chart.defaults.plugins.tooltip.borderWidth = 1;
 
-const TABS = [['res', 'Resumen'], ['tel', 'Telemetría'], ['pace', 'Ritmo & Simulación'], ['acc', 'Predicción vs Realidad'], ['cmp', 'Sim vs Real']];
+const TABS = [['res', 'Resumen'], ['tel', 'Telemetría'], ['pace', 'Ritmo & Simulación'], ['race', 'Simulador de carrera'], ['acc', 'Predicción vs Realidad'], ['cmp', 'Sim vs Real']];
 const SIDS_ALL = ['FP1', 'PR', 'FP2', 'Q1', 'Q2', 'SPR', 'RAC'];
 const TARGETS = [['POLE', 'Pole'], ['SPR', 'Sprint'], ['RAC', 'Domingo']];
 const WHY = { OUT: 'Out-lap', IN: 'In-lap', ANU: 'Anulada', LENTA: '>107%', SAL: 'Salida' };
@@ -29,10 +29,15 @@ const evTxt = e => (e.lap ? `V${e.lap} · ` : '') + e.text;
 function Badge({ real, children }) {
   return <span className={'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider ' + (real ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40' : 'bg-sky-500/15 text-sky-300 border border-sky-500/40')}>{children || (real ? 'REAL' : 'SIMULADO')}</span>;
 }
-function Panel({ title, right, children, className = '' }) {
+/* Every panel names the session / target its data belongs to. `sess` overrides the default scope given by the active milestone; sess={null} hides the tag. */
+const ScopeCtx = React.createContext(null);
+const TLBL = { POLE: 'Q2', SPR: 'SPRINT', RAC: 'RACE' };                                    // prediction target -> session it is judged on
+const sessTag = s => SESS[s].label + (SD[s].real ? ' · REAL' : ' · SIM');
+function Panel({ title, right, children, className = '', sess }) {
+  const scope = useContext(ScopeCtx), tag = sess === undefined ? scope : sess;
   return <section className={'rounded-lg border border-[#1f2630] bg-[#10141a] ' + className}>
     {(title || right) && <header className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[#1f2630]">
-      <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-300">{title}</h3><div className="flex items-center gap-2">{right}</div></header>}
+      <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-300 flex flex-wrap items-center gap-x-2 gap-y-1">{title}{tag && <span className="px-1.5 py-0.5 rounded border border-red-500/40 bg-red-500/10 text-red-300 normal-case tracking-normal font-bold text-[10px]">{tag}</span>}</h3><div className="flex items-center gap-2">{right}</div></header>}
     <div className="p-4">{children}</div></section>;
 }
 function Dot({ n }) { return <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: RIDER[n].color }} />; }
@@ -60,12 +65,13 @@ const axisT = (text) => ({ title: { display: true, text } });
 function PodiumCard({ target, snap, prev, onOpen }) {
   const t = tgtRows(snap, target), known = t.known;
   const label = { POLE: 'Pole', SPR: 'Sprint', RAC: 'Domingo' }[target];
+  const simulated = known && !SD[{ POLE: 'Q2', SPR: 'SPR', RAC: 'RAC' }[target]].real;                  // this milestone "knows" the result only because the session is simulated
   const prevRows = prev ? tgtRows(prev, target).rows : null;
   const top = t.rows.slice(0, 3);
   return <div className="rounded-lg border border-[#1f2630] bg-[#10141a] overflow-hidden">
     <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1f2630]" style={{ background: 'linear-gradient(90deg,#1a0d10,#10141a)' }}>
       <div className="font-black tracking-widest text-sm text-white">TOP 3 · {label.toUpperCase()}</div>
-      <span className={'text-[10px] font-bold px-2 py-0.5 rounded ' + (known ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/15 text-amber-300 border border-amber-500/40')}>{known ? 'RESULTADO' : 'PREDICCIÓN'}</span>
+      <span className={'text-[10px] font-bold px-2 py-0.5 rounded ' + (simulated ? 'bg-sky-500/15 text-sky-300 border border-sky-500/40' : known ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/15 text-amber-300 border border-amber-500/40')}>{simulated ? 'SIMULADO' : known ? 'RESULTADO' : 'PREDICCIÓN'}</span>
     </div>
     <ul className="divide-y divide-[#1a2029]">
       {top.map((r, i) => {
@@ -94,7 +100,7 @@ function RiderPanel({ sel, setSel, snap }) {
     return [...NUMS].sort((a, b) => (rank[a] || 99) - (rank[b] || 99));
   }, [snap]);
   const toggle = n => setSel(s => s.includes(n) ? s.filter(x => x !== n) : [...s, n]);
-  return <Panel title={`Pilotos (${sel.length}/${NUMS.length})`}>
+  return <Panel title={`Pilotos (${sel.length}/${NUMS.length})`} sess={null}>
     <div className="flex flex-wrap gap-1.5 mb-3">
       <Chip onClick={() => setSel([...NUMS])}>Todos</Chip><Chip onClick={() => setSel([])}>Ninguno</Chip>
       <Chip onClick={() => setSel(DEFAULT_SEL)}>Selección</Chip>
@@ -149,7 +155,7 @@ function CircuitCard({ M }) {
 }
 
 /* ---------- TAB: Resumen ---------- */
-function Resumen({ snap, prev, M, sel, goPace }) {
+function Resumen({ snap, prev, M, sel, goPace, goSim }) {
   const A = snap.A;
   const allV = NUMS.map(n => ({ n, v: A[n].vmax })).filter(x => x.v).sort((a, b) => b.v - a.v)[0];
   const bestL = NUMS.map(n => ({ n, t: A[n].best })).filter(x => isFinite(x.t)).sort((a, b) => a.t - b.t)[0];
@@ -158,6 +164,9 @@ function Resumen({ snap, prev, M, sel, goPace }) {
   const K = [['Mejor vuelta real', fmtLap(bestL.t), mm(bestL.n)], ['Mejor vuelta ideal', fmtLap(bestI.t), mm(bestI.n)],
   ['Velocidad punta', allV.v.toFixed(1) + ' km/h', mm(allV.n)], ['Vueltas válidas', `${clean}/${tot}`, `${Math.round(100 * clean / tot)}% tras depuración`]];
   return <div className="space-y-4">
+    {M.sessions.includes('RAC') && !SD.RAC.real && <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-3 text-sm text-sky-100 flex flex-wrap items-center gap-3">
+      <span><b>La Carrera aún no tiene PDFs en {CIRC.folder}/RACE/:</b> lo que ves de Domingo es una simulación. Ajusta pista, meteo y condición (seco, mojado o flag-to-flag) en el simulador.</span>
+      <button onClick={goSim} className="ml-auto px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold">Abrir simulador de carrera →</button></div>}
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {K.map(([a, b, c]) => <div key={a} className="rounded-lg border border-[#1f2630] bg-[#10141a] px-4 py-3">
         <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{a}</div>
@@ -172,14 +181,12 @@ function Resumen({ snap, prev, M, sel, goPace }) {
 }
 
 /* ---------- TAB: Telemetría ---------- */
-function Telemetria({ snap, M, sel, view }) {
+function Telemetria({ snap, M, sel, view, sid }) {
   const avail = M.sessions;
-  const [sid, setSid] = useState('PR');
   const [ide, setIde] = useState('ALL');
   const [showDis, setShowDis] = useState(false);
   const [spm, setSpm] = useState('max');
-  useEffect(() => { if (!avail.includes(sid)) setSid(avail[avail.length - 1]); }, [M.id]);
-  const cur = avail.includes(sid) ? sid : avail[avail.length - 1];
+  const cur = sid;                                                  // chosen in the sticky header (App guarantees it belongs to the milestone)
   const ideS = ide === 'ALL' || avail.includes(ide) ? ide : 'ALL';
   const A = snap.A, order = sel;
 
@@ -230,17 +237,16 @@ function Telemetria({ snap, M, sel, view }) {
 
   const SECN = ['S1', 'S2', 'S3', 'S4'];
   return <div className="space-y-4">
-    <Panel title="Evolución de vuelta (depurada)" right={<>
+    <Panel title="Evolución de vuelta (depurada)" sess={sessTag(cur)} right={<>
       <label className="text-[11px] text-slate-400 flex items-center gap-1.5"><input type="checkbox" className="accent-red-600" checked={showDis} onChange={e => setShowDis(e.target.checked)} />mostrar out/in/lentas (◇)</label>
       <Badge real={SD[cur].real} /></>}>
-      <div className="flex flex-wrap gap-1.5 mb-3">{avail.map(s => <Chip key={s} active={s === cur} onClick={() => setSid(s)}>{SESS[s].label}</Chip>)}</div>
       {SD[cur].real && SD[cur].official && SD[cur].official.cond && <div className="text-[11px] text-slate-400 mb-2">☀ Condiciones oficiales de {SESS[cur].label}: <b className="text-slate-200">{condTxt(SD[cur].official.cond)}</b></div>}
       {order.length ? <ChartCanvas type="scatter" data={lapData} options={lapOpts} height={340} /> : <Empty />}
       <p className="text-[11px] text-slate-500 mt-2">● vuelta válida · <span className="text-red-400">✕</span> anulada (bandera/límites de pista) · ◇ out/in-lap o &gt;107% (opcional). {lapData.cut > 0 && `${lapData.cut} vueltas fuera de escala/descartadas no dibujadas.`}</p>
     </Panel>
     <FastSeq sid={cur} view={view} />
     <RaceControl sid={cur} />
-    <Panel title="Vuelta ideal por sesión" right={<div className="flex flex-wrap gap-1.5"><Chip active={ideS === 'ALL'} onClick={() => setIde('ALL')}>Σ Fin de semana</Chip>{avail.map(s => <Chip key={s} active={s === ideS} onClick={() => setIde(s)}>{SESS[s].label}</Chip>)}</div>}>
+    <Panel title="Vuelta ideal por sesión" sess={ideS === 'ALL' ? 'Σ ' + avail.map(x => SESS[x].label).join(' + ') : sessTag(ideS)} right={<div className="flex flex-wrap gap-1.5"><Chip active={ideS === 'ALL'} onClick={() => setIde('ALL')}>Σ Fin de semana</Chip>{avail.map(s => <Chip key={s} active={s === ideS} onClick={() => setIde(s)}>{SESS[s].label}</Chip>)}</div>}>
       <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">Ideal = suma de los <b className="text-slate-300">mejores sectores de cada piloto</b> ({ideTag}), aunque salgan de vueltas distintas. Parte de los <b className="text-slate-300">Best Partial Times oficiales</b> y solo los admite si una vuelta limpia del Analysis los confirma (out-laps, in-laps «P» y tiempos anulados «*» no cuentan; un parcial subrayado fue sustituido por el mejor parcial limpio). Un piloto con <b className="text-slate-300">≤ 4 vueltas</b> en la sesión (suma de todas sus runs) <b className="text-slate-300">no se tiene en cuenta</b> en esa sesión.</p>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
         <div><div className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">Sectores: pérdida vs mejor del campo ({ideTag})</div>{order.length ? <ChartCanvas type="bar" data={secData} options={secOpts} height={260} /> : <Empty />}</div>
@@ -260,7 +266,7 @@ function Telemetria({ snap, M, sel, view }) {
       {!order.length && <Empty />}
     </Panel>
     <EventSpeed M={M} />
-    <Panel title="Velocidad punta por sesión" right={<div className="flex gap-1.5"><Chip active={spm === 'max'} onClick={() => setSpm('max')}>Máxima</Chip><Chip active={spm === 'top5'} onClick={() => setSpm('top5')}>Media Top 5</Chip></div>}>{order.length ? <ChartCanvas type="bar" data={spData} options={spOpts} height={300} /> : <Empty />}</Panel>
+    <Panel title="Velocidad punta por sesión" sess={avail.map(x => SESS[x].label).join(' · ')} right={<div className="flex gap-1.5"><Chip active={spm === 'max'} onClick={() => setSpm('max')}>Máxima</Chip><Chip active={spm === 'top5'} onClick={() => setSpm('top5')}>Media Top 5</Chip></div>}>{order.length ? <ChartCanvas type="bar" data={spData} options={spOpts} height={300} /> : <Empty />}</Panel>
   </div>;
 }
 function EventSpeed({ M }) {
@@ -268,7 +274,7 @@ function EventSpeed({ M }) {
   const rows = Object.entries(ev).filter(([n, v]) => RIDER[n] && M.sessions.includes(v.sid)).sort((a, b) => b[1].kmh - a[1].kmh);
   if (!rows.length) return null;
   const rec = DATA.circuit.records && DATA.circuit.records.vmax, top = rows[0][1].kmh, lo = Math.min(...rows.map(r => r[1].kmh)) - 4;
-  return <Panel title="Punta del evento (mejor de cada piloto)" right={<span className="text-[11px] text-slate-500">Event Best Maximum Speed · {rec ? `récord ${rec.kmh.toFixed(1)} km/h (${rec.who.split(' ').pop()} ${rec.year})` : ''}</span>}>
+  return <Panel title="Punta del evento (mejor de cada piloto)" sess={M.sessions.map(x => SESS[x].label).join(' · ')} right={<span className="text-[11px] text-slate-500">Event Best Maximum Speed · {rec ? `récord ${rec.kmh.toFixed(1)} km/h (${rec.who.split(' ').pop()} ${rec.year})` : ''}</span>}>
     <div className="space-y-1">{rows.map(([n, v]) => <div key={n} className="flex items-center gap-2 text-xs"><span className="w-28 truncate text-slate-200"><Dot n={+n} /> {mm(+n)}</span>
       <div className="flex-1 h-3 bg-[#0d1117] rounded overflow-hidden"><div className="h-full" style={{ width: (100 * (v.kmh - lo) / (top - lo)) + '%', background: RIDER[n].color }} /></div>
       <span className="w-16 tabular-nums text-slate-100 text-right">{v.kmh.toFixed(1)}</span><span className="w-14 text-slate-500">{v.sid ? SESS[v.sid].label : '—'}</span></div>)}</div>
@@ -281,7 +287,7 @@ function FastSeq({ sid, view }) {
     pointBackgroundColor: fast.map(f => RIDER[f.num] ? RIDER[f.num].color : '#fff'), pointRadius: 6, pointHoverRadius: 8 }] } : null, [sid, view]);
   const opts = useMemo(() => ({ parsing: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `#${c.raw.n} ${mm(c.raw.n)} · ${fmtLap(c.raw.y)} · vuelta ${c.raw.lap} · ${c.raw.kmh} km/h` } } },
     scales: { x: { type: 'linear', ...axisT('Minuto de sesión') }, y: { ...axisT('Mejor vuelta de la sesión'), ticks: { callback: v => fmtLap(v) } } } }), []);
-  return <Panel title="Evolución cronológica de la sesión (Fastest Laps Sequence)" right={<Badge real={SD[sid].real} />}>
+  return <Panel title="Evolución cronológica de la sesión (Fastest Laps Sequence)" sess={sessTag(sid)} right={<Badge real={SD[sid].real} />}>
     {data ? <><ChartCanvas type="scatter" data={data} options={opts} height={230} />
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-400">{fast.map((f, i) => <span key={i}><Dot n={f.num} /> {mm(f.num)} <b className="text-slate-200 tabular-nums">{fmtLap(f.t)}</b> <span className="text-slate-600">min {(f.at / 60).toFixed(1)}</span></span>)}</div></>
       : <div className="text-sm text-slate-500 py-4">Disponible para sesiones reales con el PDF «Fastest Laps Sequence» en su carpeta de {CIRC.folder}/.</div>}
@@ -294,7 +300,7 @@ function RaceControl({ sid }) {
   const res = Object.fromEntries((SD[sid].results || []).map(r => [r.num, r]));
   const rows = lc && lc.grid ? lc.grid.map((n, i) => { const p1 = lc.laps[0] ? lc.laps[0].indexOf(n) + 1 : 0, fin = res[n]; return { n, g: i + 1, p1, d1: p1 ? (i + 1) - p1 : null, fin: fin && fin.status !== 'DNF' ? fin.pos : null, laps: fin ? fin.laps : null }; }) : [];
   const notable = ev.filter(e => e.kind !== 'info' || /flag|jump|start/i.test(e.text));
-  return <Panel title="Dirección de carrera y salida" right={<Badge real />}>
+  return <Panel title="Dirección de carrera y salida" sess={sessTag(sid)} right={<Badge real />}>
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <div><div className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">Cronología oficial (bajo la Classification)</div>
         <ul className="text-xs space-y-1">{notable.map((e, i) => <li key={i} className={EV_CLS[e.kind]}><span className="text-slate-600 tabular-nums mr-2">{e.at}</span>{e.num && <><Dot n={e.num} /> </>}{evTxt(e)}</li>)}</ul>
@@ -310,7 +316,7 @@ function RaceControl({ sid }) {
 }
 function DocsPanel({ M }) {
   const COLS = [['analysis', 'Analysis'], ['class', 'Classification'], ['best', 'Best Partial'], ['maxspd', 'Max Speed'], ['avgspd', 'Top&Avg'], ['fast', 'Fastest Laps']];
-  return <Panel title="Trazabilidad de datos por sesión" right={<span className="text-[11px] text-slate-500">{CIRC.folder}/&lt;sesión&gt;/ · {DATA.meta.built}</span>}>
+  return <Panel title="Trazabilidad de datos por sesión" sess="todas las sesiones" right={<span className="text-[11px] text-slate-500">{CIRC.folder}/&lt;sesión&gt;/ · {DATA.meta.built}</span>}>
     <div className="overflow-x-auto"><table className="w-full text-xs">
       <thead><tr className="text-left text-slate-500 border-b border-[#1f2630]"><th className="py-1.5 pr-3">Sesión</th><th className="pr-3">Origen</th>{COLS.map(([k, l]) => <th key={k} className="pr-3 whitespace-nowrap">{l}</th>)}<th className="pr-3">Condiciones</th><th className="pr-3">Otros informes</th><th>Validación cruzada vs Analysis</th></tr></thead>
       <tbody>{SIDS_ALL.map(s => { const real = SD[s].real && DATA.meta.real.includes(s), docs = (DATA.meta.docs || {})[s] || {}, v = (DATA.meta.validation || {})[s] || {};
@@ -364,7 +370,7 @@ function Ritmo({ snap, M, sel, target, setTarget }) {
     SPR: 'Mediana de la mejor tanda corta (5-8 vtas, normalizada a Medium) + σ + degradación proyectada ×' + DATA.circuit.sprintLaps + ' vueltas + parrilla (oficial si hay Grid.pdf) y punta + prior leve por clasificación del Mundial 2025 (' + PRIOR_WC + ' s/vta por puesto).',
     RAC: 'Ritmo de tanda larga (>8 vtas) + degradación por regresión lineal proyectada ×' + DATA.circuit.raceLaps + ' vueltas + parrilla (oficial si hay Grid.pdf) y velocidad punta en recta.' }[target];
   return <div className="space-y-4">
-    <Panel title="Simulación" right={<div className="flex gap-1.5">{TARGETS.map(([t, l]) => <Chip key={t} active={t === target} onClick={() => setTarget(t)}>{l}</Chip>)}</div>}>
+    <Panel title="Simulación" sess={'objetivo ' + TLBL[target]} right={<div className="flex gap-1.5">{TARGETS.map(([t, l]) => <Chip key={t} active={t === target} onClick={() => setTarget(t)}>{l}</Chip>)}</div>}>
       <p className="text-xs text-slate-400 mb-3 leading-relaxed"><b className="text-slate-200">Modelo:</b> {desc} {known && <span className="text-emerald-400 font-semibold"> · Este objetivo ya es resultado real (simulado) en este hito.</span>}</p>
       <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums">
         <thead><tr className="text-left text-slate-500 border-b border-[#1f2630]">{th('pos', 'Pos')}{th('name', 'Piloto')}{th('T', target === 'POLE' ? 'Vuelta proy.' : 'Tiempo')}{th('gap', 'Gap')}
@@ -382,8 +388,8 @@ function Ritmo({ snap, M, sel, target, setTarget }) {
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Panel title="Tandas reales y degradación (pilotos seleccionados)">{sel.length ? <ChartCanvas type="scatter" data={stData} options={stOpts} height={320} /> : <Empty />}</Panel>
       <div className="space-y-4">
-        <Panel title="Gap predicho (seleccionados)">{sel2.length ? <ChartCanvas type="bar" data={gapData} options={gapOpts} height={150 + sel2.length * 12} /> : <Empty />}</Panel>
-        {target !== 'POLE' && <Panel title="Degradación proyectada">{degRows.length ? <ChartCanvas type="bar" data={degData} options={degOpts} height={170} /> : <Empty />}</Panel>}
+        <Panel title="Gap predicho (seleccionados)" sess={'objetivo ' + TLBL[target]}>{sel2.length ? <ChartCanvas type="bar" data={gapData} options={gapOpts} height={150 + sel2.length * 12} /> : <Empty />}</Panel>
+        {target !== 'POLE' && <Panel title="Degradación proyectada" sess={'objetivo ' + TLBL[target]}>{degRows.length ? <ChartCanvas type="bar" data={degData} options={degOpts} height={170} /> : <Empty />}</Panel>}
       </div>
     </div>
   </div>;
@@ -456,7 +462,7 @@ function Precision({ M, sel, view }) {
         </tbody></table></div>
       <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">MAE = error medio del ritmo por vuelta (s/vta, pilotos que terminan). «Top 3» = % del podio acertado; «±2 pos» = % de pilotos clasificados a ≤ 2 puestos de lo previsto. Las predicciones son <b className="text-slate-300">simulaciones limpias</b>: no contemplan meteo, caídas, sanciones ni bandera roja, así que la desviación que queda sin explicar apunta a ellos (ver diagnóstico más abajo).</p>
     </Panel>
-    <Panel title="Fotos de predicción por hito" right={<div className="flex gap-1.5">{TARGETS.map(([t, l]) => <Chip key={t} active={t === tgt} disabled={!resolved[t]} title={!resolved[t] ? 'Aún sin resultado real en este hito' : ''} onClick={() => setTg(t)}>{l}</Chip>)}</div>}>
+    <Panel title="Fotos de predicción por hito" sess={'objetivo ' + TLBL[tgt]} right={<div className="flex gap-1.5">{TARGETS.map(([t, l]) => <Chip key={t} active={t === tgt} disabled={!resolved[t]} title={!resolved[t] ? 'Aún sin resultado real en este hito' : ''} onClick={() => setTg(t)}>{l}</Chip>)}</div>}>
       <div className="overflow-x-auto"><table className="w-full text-xs">
         <thead><tr className="text-left text-slate-500 border-b border-[#1f2630]"><th className="py-1.5 pr-3">Foto</th><th className="pr-3">Top 3 predicho</th><th className="pr-3">Podio acierto</th><th className="pr-3">Posiciones exactas</th><th className="pr-3">±2 pos</th><th className="pr-3">Orden (ρ)</th><th className="pr-3">Error ritmo (MAE)</th><th className="pr-3" title="MAE sin los pilotos atípicos">MAE sin atípicos</th><th className="pr-3">Sesgo</th><th className="pr-3">Error pos. medio</th><th>Error parrilla</th></tr></thead>
         <tbody>
@@ -472,7 +478,7 @@ function Precision({ M, sel, view }) {
         </tbody></table></div>
       <p className="text-[11px] text-slate-500 mt-2"><span className="text-emerald-300">Verde</span> posición exacta · <span className="text-amber-300">ámbar</span> en el podio pero otra posición · <span className="text-red-300">rojo</span> fallo. «Sesgo» positivo = ritmo predicho más lento que el real. «Error parrilla» = puestos de diferencia entre la parrilla estimada y la oficial (solo antes de Q2).</p>
     </Panel>
-    {diag && <Panel title={`Predicho vs real por piloto · ${tgt === 'POLE' ? 'Parrilla (Q2)' : tgt === 'SPR' ? 'Sprint' : 'Carrera'}`} right={<div className="flex gap-1.5 flex-wrap">{cur.map(a => <Chip key={a.snapId} active={a.snapId === diag.snapId} onClick={() => setSnapSel(a.snapId)}>{'Foto ' + MILESTONES.find(m => m.id === a.snapId).short}</Chip>)}</div>}>
+    {diag && <Panel title="Predicho vs real por piloto" sess={'objetivo ' + TLBL[tgt]} right={<div className="flex gap-1.5 flex-wrap">{cur.map(a => <Chip key={a.snapId} active={a.snapId === diag.snapId} onClick={() => setSnapSel(a.snapId)}>{'Foto ' + MILESTONES.find(m => m.id === a.snapId).short}</Chip>)}</div>}>
       {(() => { const pr = tgtRows(SNAP[diag.snapId], tgt).rows, rl = realRef.rows, rm = Object.fromEntries(rl.map(r => [r.num, r])), rows = pr.map(p => ({ p, r: rm[p.num] })).filter(x => x.r);
         const pace = Object.fromEntries(diag.rows.map(x => [x.num, x]));
         return <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums">
@@ -484,7 +490,7 @@ function Precision({ M, sel, view }) {
                 : <><td className="pr-3 text-slate-400">{x ? fmtTime(x.predPace) : '—'}</td><td className="pr-3 text-slate-200">{x ? fmtTime(x.realPace) : '—'}</td><td className={x ? (Math.abs(x.d) > 0.5 ? 'text-red-400' : 'text-slate-400') : 'text-slate-600'}>{x ? sgn(x.d) : '—'}</td></>}</tr>; })}</tbody></table></div>; })()}
       <p className="text-[11px] text-slate-500 mt-2">Δ pos = posición predicha − real (positivo: se esperaba peor puesto del que consiguió). Δ vuelta/ritmo = predicho − real (negativo: se predijo más rápido de lo que fue).</p>
     </Panel>}
-    {diag && diag.rows.length > 0 && <Panel title="Diagnóstico de la desviación" right={<div className="flex gap-1.5 flex-wrap">{cur.map(a => <Chip key={a.snapId} active={a.snapId === diag.snapId} onClick={() => setSnapSel(a.snapId)}>{MILESTONES.find(m => m.id === a.snapId).short}</Chip>)}</div>}>
+    {diag && diag.rows.length > 0 && <Panel title="Diagnóstico de la desviación" sess={'objetivo ' + TLBL[tgt]} right={<div className="flex gap-1.5 flex-wrap">{cur.map(a => <Chip key={a.snapId} active={a.snapId === diag.snapId} onClick={() => setSnapSel(a.snapId)}>{MILESTONES.find(m => m.id === a.snapId).short}</Chip>)}</div>}>
       <div className="space-y-3 text-[13px] leading-relaxed">
         <div className="text-slate-300">{diag.common && diag.common.strong
           ? <><b className="text-amber-300">Desfase común del campo:</b> el ritmo de carrera fue de media <b className="tabular-nums">{Math.abs(diag.common.bias).toFixed(3)} s/vta {dirTxt(diag.common.bias)}</b> y el {Math.round(diag.common.share * 100)}% de los pilotos se desvió en el mismo sentido. Es la huella de algo que afecta a todos y que la simulación limpia no contempla (temperatura/agarre de pista, lluvia o pista mojada a tramos, neumático distinto al supuesto, bandera roja o distancia distinta).</>
@@ -503,16 +509,16 @@ function Precision({ M, sel, view }) {
       </div>
     </Panel>}
     {last && <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <Panel title="Última foto"><Gauge pct={last.pct} label={`Acierto Top 3 · ${tgt === 'POLE' ? 'Pole' : tgt === 'SPR' ? 'Sprint' : 'Carrera'}`} sub={`${last.overlap}/3 en podio · ${last.exact}/3 exactos`} /></Panel>
-      <Panel title="Diferencia de ritmo">{last.mae != null ? <div><div className="text-3xl font-black tabular-nums text-white">{last.mae.toFixed(3)}<span className="text-sm text-slate-400"> s/vta</span></div><div className="text-[11px] text-slate-500 mt-1">MAE sobre {last.rows.length} pilotos · sesgo {last.bias > 0 ? '+' : ''}{last.bias.toFixed(3)} s/vta</div></div> : <div className="text-sm text-slate-500">La pole se evalúa por posición (no hay ritmo por vuelta).</div>}</Panel>
-      <Panel title="Mejora de la predicción">{cur.length > 1 ? <div><div className="text-3xl font-black tabular-nums text-white">{cur[cur.length - 1].pct - cur[0].pct >= 0 ? '+' : ''}{cur[cur.length - 1].pct - cur[0].pct}<span className="text-sm text-slate-400"> pp</span></div>
+      <Panel title="Última foto" sess={'objetivo ' + TLBL[tgt]}><Gauge pct={last.pct} label={`Acierto Top 3 · ${tgt === 'POLE' ? 'Pole' : tgt === 'SPR' ? 'Sprint' : 'Carrera'}`} sub={`${last.overlap}/3 en podio · ${last.exact}/3 exactos`} /></Panel>
+      <Panel title="Diferencia de ritmo" sess={'objetivo ' + TLBL[tgt]}>{last.mae != null ? <div><div className="text-3xl font-black tabular-nums text-white">{last.mae.toFixed(3)}<span className="text-sm text-slate-400"> s/vta</span></div><div className="text-[11px] text-slate-500 mt-1">MAE sobre {last.rows.length} pilotos · sesgo {last.bias > 0 ? '+' : ''}{last.bias.toFixed(3)} s/vta</div></div> : <div className="text-sm text-slate-500">La pole se evalúa por posición (no hay ritmo por vuelta).</div>}</Panel>
+      <Panel title="Mejora de la predicción" sess={'objetivo ' + TLBL[tgt]}>{cur.length > 1 ? <div><div className="text-3xl font-black tabular-nums text-white">{cur[cur.length - 1].pct - cur[0].pct >= 0 ? '+' : ''}{cur[cur.length - 1].pct - cur[0].pct}<span className="text-sm text-slate-400"> pp</span></div>
         <div className="text-[11px] text-slate-500 mt-1">acierto Top 3 de la 1ª a la última foto{cur[0].mae != null && ` · MAE ${cur[0].mae.toFixed(2)} → ${cur[cur.length - 1].mae.toFixed(2)} s/vta`}</div></div> : <div className="text-sm text-slate-500">Solo hay una foto previa para este objetivo.</div>}</Panel>
     </div>}
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-      <Panel title="Evolución de la precisión entre fotos">{cur.length ? <ChartCanvas type="bar" data={evoData} options={evoOpts} height={280} /> : <Empty />}</Panel>
-      <Panel title="Ritmo predicho vs real (seleccionados)">{rowsSel.length ? <ChartCanvas type="bar" data={pvData} options={pvOpts} height={280} /> : <div className="text-center text-slate-500 text-sm py-10">{tgt === 'POLE' ? 'Disponible para Sprint y Carrera.' : 'Selecciona pilotos en el panel lateral.'}</div>}</Panel>
+      <Panel title="Evolución de la precisión entre fotos" sess={'objetivo ' + TLBL[tgt]}>{cur.length ? <ChartCanvas type="bar" data={evoData} options={evoOpts} height={280} /> : <Empty />}</Panel>
+      <Panel title="Ritmo predicho vs real (seleccionados)" sess={'objetivo ' + TLBL[tgt]}>{rowsSel.length ? <ChartCanvas type="bar" data={pvData} options={pvOpts} height={280} /> : <div className="text-center text-slate-500 text-sm py-10">{tgt === 'POLE' ? 'Disponible para Sprint y Carrera.' : 'Selecciona pilotos en el panel lateral.'}</div>}</Panel>
     </div>
-    {last && last.rows.length > 0 && <Panel title="Detalle por piloto (última foto)">
+    {last && last.rows.length > 0 && <Panel title="Detalle por piloto (última foto)" sess={'objetivo ' + TLBL[tgt]}>
       <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums"><thead><tr className="text-left text-slate-500 border-b border-[#1f2630]"><th className="py-1.5 pr-3">Piloto</th><th className="pr-3">Pos. pred.</th><th className="pr-3">Pos. real</th><th className="pr-3">Δ pos</th><th className="pr-3">Ritmo pred.</th><th className="pr-3">Ritmo real</th><th className="pr-3">Δ s/vta</th><th className="pr-3">Degr. pred.</th><th>Degr. real</th></tr></thead>
         <tbody>{[...last.rows].sort((a, b) => a.realPos - b.realPos).map(r => <tr key={r.num} className={'border-b border-[#161c25] ' + (sel.includes(r.num) ? 'bg-[#131922]' : '')}>
           <td className="py-1.5 pr-3 whitespace-nowrap"><Dot n={r.num} /> <span className="ml-1 text-slate-200">{mm(r.num)}</span></td><td className="pr-3">{r.predPos}</td><td className="pr-3 font-bold">{r.realPos}</td>
@@ -535,23 +541,117 @@ function UploadHelp() {
       <li>La sesión pasa a REAL, el resto sigue simulado, y aquí aparece la comparativa simulación vs real.</li>
     </ol></div>;
 }
-function Comparativa({ sel }) {
+/* ---------- TAB: Simulador de carrera ---------- */
+const NUMK = ['laps', 'runs', 'seed', 'switchLap', 'pitLoss', 'wetPen', 'wetSd', 'wetNoise', 'crashPct', 'wetCrashMult', 'kPace', 'kDeg', 'paceSd', 'ground', 'air', 'hum', 'hour'];
+function Simulador({ M, sel }) {
+  const c = DATA.circuit, N0 = c.raceLaps, fc = c.forecast;
+  const base = useMemo(() => raceBase(M.id), [M.id]), ref = useMemo(raceRefCond, []);
+  const init = () => Object.assign({}, RACE_DEFAULTS, { laps: N0, ground: fc ? fc.ground : ref.ground, air: fc ? fc.air : ref.air, hum: fc ? fc.hum : ref.hum, refGround: ref.ground, rain: fc ? fc.rain : null, date: c.raceDate || '', hour: c.raceHour || 15 });
+  const [draft, setDraft] = useState(init), [applied, setApplied] = useState(init), [msg, setMsg] = useState(null);
+  const set = (k, v) => setDraft(d => Object.assign({}, d, { [k]: v }));
+  const clean = d => { const o = Object.assign({}, d); NUMK.forEach(k => { if (!isFinite(+o[k]) || o[k] === '') o[k] = init()[k]; else o[k] = +o[k]; }); o.laps = clamp(Math.round(o.laps), 5, 60); o.runs = clamp(Math.round(o.runs), 50, 3000); o.switchLap = clamp(Math.round(o.switchLap), 1, o.laps - 1); return o; };
+  const res = useMemo(() => base && base.rows.length ? simulateRaceMC(base.rows, applied, N0) : null, [applied, base]);
+  const run = (seed) => setApplied(clean(Object.assign({}, draft, seed != null ? { seed } : {})));
+  const dirty = JSON.stringify(clean(draft)) !== JSON.stringify(applied);
+  const loadForecast = async () => {
+    try {
+      if (!c.lat || !draft.date) throw new Error('falta la fecha o las coordenadas del circuito');
+      setMsg('Consultando Open-Meteo…');
+      const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,shortwave_radiation&timezone=auto&start_date=${draft.date}&end_date=${draft.date}`)).json();
+      if (j.error) throw new Error(j.reason || 'sin respuesta');
+      const h = j.hourly, i = h.time.findIndex(t => +t.slice(11, 13) === +draft.hour); if (i < 0) throw new Error('hora no disponible');
+      const air = h.temperature_2m[i], hum = h.relative_humidity_2m[i], rain = h.precipitation_probability[i], sw = h.shortwave_radiation[i] || 0, ground = Math.round(air + Math.min(18, 0.019 * sw));
+      setDraft(d => Object.assign({}, d, { air, hum, rain, ground }));
+      setMsg(`Open-Meteo ${draft.date} ${draft.hour}:00 → aire ${air}°, humedad ${hum}%, lluvia ${rain}%, radiación ${Math.round(sw)} W/m² → pista estimada ${ground}° (aire + 0,019·radiación). Pulsa «Simular».`);
+    } catch (e) { setMsg('No se pudo cargar la previsión (' + e.message + '). Introduce los valores a mano.'); }
+  };
+  const fld = (k, l, step = 1, w = 'w-16') => <label className="flex items-center gap-1.5 text-[11px] text-slate-400">{l}<input type="number" step={step} value={draft[k]} onChange={e => set(k, e.target.value)} className={w + ' bg-[#0d1117] border border-[#2a313c] rounded px-1.5 py-1 text-xs text-slate-100 tabular-nums'} /></label>;
+  const P = applied, lbl = { DRY: 'SECO', WET: 'MOJADO', F2F: 'FLAG-TO-FLAG' }[P.cond] + (P.cond === 'F2F' ? (P.f2f === 'DRY>WET' ? ' seco→mojado' : ' mojado→seco') + ' (v' + P.switchLap + ')' : '') + ` · pista ${P.ground}° · ${P.laps} vtas`;
+  const tag = 'RACE · SIM · ' + lbl;
+  const ids = res ? res.riders.map(r => r.num) : [], selIn = sel.filter(n => ids.includes(n));
+  const labels = res ? Array.from({ length: res.N }, (_, i) => i + 1) : [];
+  const gapData = useMemo(() => res ? { labels, datasets: selIn.map(n => ({ label: mm(n), data: res.gapByLap.map(g => g[n] == null ? null : +g[n].toFixed(2)), borderColor: RIDER[n].color, backgroundColor: RIDER[n].color, pointRadius: 0, borderWidth: 2, tension: 0.2, spanGaps: false })) } : null, [res, sel]);
+  const posData = useMemo(() => res ? { labels, datasets: selIn.map(n => ({ label: mm(n), data: res.posByLap.map(g => g[n] == null ? null : g[n]), borderColor: RIDER[n].color, backgroundColor: RIDER[n].color, pointRadius: 2, borderWidth: 2, stepped: true })) } : null, [res, sel]);
+  const probData = useMemo(() => res ? { labels: res.riders.slice(0, 10).map(r => mm(r.num)), datasets: [{ label: '% victoria', data: res.riders.slice(0, 10).map(r => +(100 * r.win).toFixed(1)), backgroundColor: '#ef4444' }, { label: '% podio', data: res.riders.slice(0, 10).map(r => +(100 * r.pod).toFixed(1)), backgroundColor: '#64748b' }] } : null, [res]);
+  const gapOpts = useMemo(() => ({ plugins: { legend: { position: 'bottom' } }, scales: { x: axisT('vuelta'), y: axisT('gap al líder (s)') } }), []);
+  const posOpts = useMemo(() => ({ plugins: { legend: { position: 'bottom' } }, scales: { x: axisT('vuelta'), y: Object.assign({ reverse: true, min: 1, ticks: { precision: 0 } }, axisT('posición')) } }), []);
+  const probOpts = useMemo(() => ({ plugins: { legend: { position: 'bottom' } }, scales: { y: Object.assign({ min: 0, max: 100 }, axisT('%')) } }), []);
+  const rain = draft.rain;
+  return <div className="space-y-4">
+    {SD.RAC.real && <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">La Carrera ya es REAL: este simulador responde a «¿qué habría pasado con otra pista o meteo?» partiendo de la predicción previa a la carrera.</div>}
+    <Panel title="Parámetros de pista y carrera" sess={tag} right={<div className="flex gap-1.5"><Chip onClick={() => run()} active={dirty}>{dirty ? 'Simular (hay cambios)' : 'Simular'}</Chip><Chip onClick={() => run(Math.floor(Math.random() * 1e6))}>Otra semilla</Chip></div>}>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <div className="space-y-3">
+          <div><div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Condición de la carrera</div>
+            <div className="flex flex-wrap gap-1.5">{[['DRY', 'Seco'], ['WET', 'Mojado'], ['F2F', 'Flag-to-flag']].map(([k, l]) => <Chip key={k} active={draft.cond === k} onClick={() => set('cond', k)}>{l}</Chip>)}</div></div>
+          {draft.cond === 'F2F' && <div className="rounded border border-[#1f2630] bg-[#0d1117] p-3 space-y-2">
+            <div className="flex flex-wrap gap-1.5"><Chip active={draft.f2f === 'DRY>WET'} onClick={() => set('f2f', 'DRY>WET')}>Empieza seco → llueve</Chip><Chip active={draft.f2f === 'WET>DRY'} onClick={() => set('f2f', 'WET>DRY')}>Empieza mojado → se seca</Chip></div>
+            <div className="flex flex-wrap gap-4">{fld('switchLap', 'Vuelta del cambio', 1)}{fld('pitLoss', 'Pérdida cambio de moto (s)', 1)}</div>
+            <p className="text-[11px] text-slate-500">Cada piloto entra a cambiar de moto entre 1 vuelta antes y 3 después del cambio de pista; mientras tanto rueda con el neumático equivocado (más lento y más riesgo de caída).</p></div>}
+          <div><div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Estado de pista esperado</div>
+            <div className="flex flex-wrap gap-4">{fld('ground', 'Pista °C')}{fld('air', 'Aire °C')}{fld('hum', 'Humedad %')}</div>
+            <div className="flex flex-wrap gap-1.5 mt-2">{['SPR', 'Q2', 'FP2', 'PR'].filter(x => SD[x].real && SD[x].official && SD[x].official.cond).map(x => <Chip key={x} onClick={() => setDraft(d => Object.assign({}, d, { ground: SD[x].official.cond.ground, air: SD[x].official.cond.air, hum: SD[x].official.cond.hum }))}>{`Como ${SESS[x].label} (${SD[x].official.cond.ground}°)`}</Chip>)}
+              {fc && <Chip onClick={() => setDraft(d => Object.assign({}, d, { ground: fc.ground, air: fc.air, hum: fc.hum, rain: fc.rain }))} title={fc.src}>Previsión Met Office (aire {fc.air}°)</Chip>}</div>
+            <p className="text-[11px] text-slate-500 mt-2">El ritmo de partida se midió con pista a <b className="text-slate-300">{ref.ground}°</b>{ref.sid ? ` (${SESS[ref.sid].label} real)` : ''}. Cada °C de diferencia cambia el ritmo {draft.kPace} s/vta y la degradación un {Math.round(100 * draft.kDeg)}%.</p></div>
+        </div>
+        <div className="space-y-3">
+          <div><div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Previsión meteorológica</div>
+            {fc && <div className="text-xs text-slate-300 leading-relaxed">{fc.src}: <b>{fc.air}°</b> · lluvia <b>{fc.rain}%</b> · {fc.sky}{fc.estimated && fc.estimated.length ? <span className="text-slate-500"> (pista y humedad estimadas)</span> : null}</div>}
+            {rain != null && <div className={'text-xs mt-1 ' + (rain >= 50 ? 'text-red-300' : rain >= 25 ? 'text-amber-300' : 'text-emerald-300')}>Probabilidad de lluvia {rain}% → {rain >= 50 ? 'conviene simular MOJADO o flag-to-flag' : rain >= 25 ? 'riesgo real de flag-to-flag: compara con esa condición' : 'carrera en seco lo más probable'}.</div>}
+            <div className="flex flex-wrap items-center gap-3 mt-2"><label className="flex items-center gap-1.5 text-[11px] text-slate-400">Fecha<input type="date" value={draft.date} onChange={e => set('date', e.target.value)} className="bg-[#0d1117] border border-[#2a313c] rounded px-1.5 py-1 text-xs text-slate-100" /></label>{fld('hour', 'Hora', 1, 'w-14')}
+              <Chip onClick={loadForecast} title="Consulta api.open-meteo.com desde tu navegador (sin clave); no se envía nada más que las coordenadas del circuito y la fecha">Cargar previsión (Open-Meteo)</Chip>
+              {c.forecastUrl && <a href={c.forecastUrl} target="_blank" rel="noreferrer" className="text-xs text-sky-300 hover:underline">Abrir Met Office ↗</a>}</div>
+            {msg && <p className="text-[11px] text-slate-400 mt-2">{msg}</p>}</div>
+          <details className="rounded border border-[#1f2630] bg-[#0d1117] p-3"><summary className="text-xs font-bold text-slate-300 cursor-pointer">Supuestos del modelo (editables)</summary>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">{fld('laps', 'Vueltas')}{fld('runs', 'Simulaciones', 50)}{fld('seed', 'Semilla', 1, 'w-20')}{fld('paceSd', 'Incertidumbre ritmo (s/vta)', 0.05)}
+              {fld('crashPct', 'Caídas en seco (% por piloto)', 0.5)}{fld('wetCrashMult', 'Caídas en mojado (×)', 0.5)}{fld('wetPen', 'Mojado: +s/vta', 0.5)}{fld('wetSd', 'Mojado: dispersión pilotos (s)', 0.1)}
+              {fld('kPace', 'Temp: s/vta por °C', 0.002, 'w-20')}{fld('kDeg', 'Temp: degradación por °C', 0.01, 'w-20')}</div>
+            <p className="text-[11px] text-slate-500 mt-2">Son supuestos, no calibrados con carreras reales: el mojado no tiene datos propios de cada piloto (se sortea su habilidad), y la sensibilidad térmica no está medida. Úsalos para comparar escenarios, no como predicción exacta.</p></details>
+        </div>
+      </div>
+    </Panel>
+    {!res && <Panel title="Resultado" sess={tag}><div className="text-sm text-slate-400">No hay una predicción de carrera de la que partir (faltan FP1 y PR).</div></Panel>}
+    {res && <>
+      <Panel title="Resultado esperado" sess={tag} right={<span className="text-[11px] text-slate-500">{P.runs} simulaciones · base: predicción {MILESTONES.find(m => m.id === base.mid).label}{base.gridOff ? ' · parrilla oficial' : ' · parrilla estimada'}</span>}>
+        <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums">
+          <thead><tr className="text-left text-slate-500 border-b border-[#1f2630]"><th className="py-1.5 pr-3">Pos</th><th className="pr-3">Piloto</th><th className="pr-3">Parr.</th><th className="pr-3">% victoria</th><th className="pr-3">% podio</th><th className="pr-3">Pos. media</th><th className="pr-3">P10–P90</th><th>% abandono</th></tr></thead>
+          <tbody>{res.riders.map(r => <tr key={r.num} className={'border-b border-[#161c25] hover:bg-[#141a22] ' + (sel.includes(r.num) ? 'bg-[#131922]' : '')}>
+            <td className="py-1.5 pr-3 font-bold text-slate-300">{r.exp}</td><td className="pr-3 whitespace-nowrap"><Dot n={r.num} /> <span className="ml-1 text-slate-100">{mm(r.num)}</span></td><td className="pr-3 text-slate-400">{r.grid}</td>
+            <td className="pr-3"><div className="flex items-center gap-2"><div className="w-16 h-1.5 bg-[#0d1117] rounded overflow-hidden"><div className="h-full bg-red-500" style={{ width: Math.min(100, 100 * r.win) + '%' }} /></div><span className="text-slate-100">{(100 * r.win).toFixed(1)}</span></div></td>
+            <td className="pr-3 text-slate-200">{(100 * r.pod).toFixed(1)}</td><td className="pr-3">{r.mean != null ? r.mean.toFixed(1) : '—'}</td><td className="pr-3 text-slate-400">{r.p10 != null ? r.p10 + '–' + r.p90 : '—'}</td>
+            <td className={r.dnf > 0.1 ? 'text-red-400' : 'text-slate-400'}>{(100 * r.dnf).toFixed(1)}</td></tr>)}</tbody></table></div>
+        <p className="text-[11px] text-slate-500 mt-2">Δ pista {res.dT >= 0 ? '+' : ''}{res.dT}° respecto al ritmo de referencia → ritmo {res.dryAdj >= 0 ? '+' : ''}{res.dryAdj.toFixed(2)} s/vta, degradación ×{res.degMul.toFixed(2)}.</p>
+      </Panel>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <Panel title="Probabilidad de victoria y podio (top 10)" sess={tag}><ChartCanvas type="bar" data={probData} options={probOpts} height={280} /></Panel>
+        <Panel title="Carrera representativa: orden final" sess={tag}><ol className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">{res.rep.map((r, i) => <li key={r.num} className={'flex items-center gap-2 ' + (r.dnf ? 'text-red-400' : 'text-slate-200')}><span className="w-6 text-slate-500 tabular-nums">{r.dnf ? '—' : i + 1}</span><Dot n={r.num} />{mm(r.num)}{r.dnf && <span className="text-[10px] font-bold">DNF</span>}</li>)}</ol>
+          <p className="text-[11px] text-slate-500 mt-3">De las {P.runs} carreras simuladas, la más cercana a las posiciones medias; los gráficos de abajo son de esta carrera.</p></Panel>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <Panel title="Gap al líder por vuelta (seleccionados)" sess={tag}>{selIn.length ? <ChartCanvas type="line" data={gapData} options={gapOpts} height={300} /> : <Empty />}</Panel>
+        <Panel title="Posición por vuelta (seleccionados)" sess={tag}>{selIn.length ? <ChartCanvas type="line" data={posData} options={posOpts} height={300} /> : <Empty />}</Panel>
+      </div>
+    </>}
+  </div>;
+}
+
+function Comparativa({ sel, sess }) {
   const withSim = SIDS_ALL.filter(s => DATA.meta.real.includes(s) && DATA.sim && DATA.sim[s]);
-  const [sid, setSid] = useState(withSim[0]);
-  const cur = withSim.includes(sid) ? sid : withSim[0];
+  const cur = withSim.includes(sess) ? sess : withSim[withSim.length - 1];            // header choice, or the latest session that has both a real and a simulated version
+  const forced = cur && cur !== sess;
   const cmp = useMemo(() => cur ? compareSession(cur) : null, [cur]);
   const rows = cmp ? [...cmp.rows].sort((a, b) => (a.rReal || 99) - (b.rReal || 99)) : [];
   const chartData = useMemo(() => ({ labels: rows.map(r => mm(r.num)), datasets: [{ label: cur && SESS[cur].kind === 'race' ? 'Δ ritmo medio sim − real (s/vta)' : 'Δ mejor vuelta sim − real (s)', data: rows.map(r => +((cur && SESS[cur].kind === 'race' ? r.dPace : r.dBest)).toFixed(3)), backgroundColor: rows.map(r => RIDER[r.num].color) }] }), [cur]);
   const chartOpts = useMemo(() => ({ plugins: { legend: { display: true, position: 'bottom' } }, scales: { y: axisT('segundos (positivo = la simulación fue más lenta)') } }), []);
   return <div className="space-y-4">
-    <Panel title="Estado de las sesiones" right={<span className="text-[11px] text-slate-500">actualizado {DATA.meta.built}</span>}>
+    <Panel title="Estado de las sesiones" sess={null} right={<span className="text-[11px] text-slate-500">actualizado {DATA.meta.built}</span>}>
       <div className="flex flex-wrap gap-2">{SIDS_ALL.map(s => { const real = DATA.meta.real.includes(s); return <div key={s} className={'px-3 py-2 rounded border text-xs ' + (real ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-sky-500/30 bg-sky-500/5')}>
         <div className="font-bold text-slate-100 flex items-center gap-2">{SESS[s].label} <Badge real={real} /></div>
         <div className="text-slate-500 mt-0.5">{real ? DATA.meta.sources[s] : 'esperando PDF…'}</div></div>; })}</div>
     </Panel>
-    {!cmp && <Panel title="Simulación vs Real"><div className="text-sm text-slate-400 mb-4">Todavía no hay ninguna sesión real de sábado/domingo que comparar con su simulación.</div><UploadHelp /></Panel>}
+    {!cmp && <Panel title="Simulación vs Real" sess={null}><div className="text-sm text-slate-400 mb-4">Todavía no hay ninguna sesión real de sábado/domingo que comparar con su simulación.</div><UploadHelp /></Panel>}
     {cmp && <>
-      <Panel title="Simulación vs Real" right={<div className="flex gap-1.5">{withSim.map(s => <Chip key={s} active={s === cur} onClick={() => setSid(s)}>{SESS[s].label}</Chip>)}</div>}>
+      <Panel title="Simulación vs Real" sess={SESS[cur].label + ' · REAL vs SIM'} right={forced ? <span className="text-[11px] text-amber-300">{SESS[sess].label} no tiene versión real y simulada a la vez: se muestra {SESS[cur].label}</span> : <span className="text-[11px] text-slate-500">comparables: {withSim.map(s => SESS[s].label).join(' · ')}</span>}>
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           {[['Pilotos', cmp.n, 'comparados'], ['MAE mejor vuelta', cmp.maeBest.toFixed(3) + ' s', 'sesgo ' + (cmp.biasBest > 0 ? '+' : '') + cmp.biasBest.toFixed(3)],
           ['MAE ritmo', cmp.maePace.toFixed(3) + ' s', 'sesgo ' + (cmp.biasPace > 0 ? '+' : '') + cmp.biasPace.toFixed(3)], ['MAE vuelta ideal', isFinite(cmp.maeIdeal) ? cmp.maeIdeal.toFixed(3) + ' s' : '—', 'Σ mejores sectores'],
@@ -563,8 +663,8 @@ function Comparativa({ sel }) {
           <div><div className="text-slate-500 mb-1">Top 3 simulado (verde = acertado)</div><TopChips top={cmp.topSim} ref3={cmp.topReal} /></div>
         </div>
       </Panel>
-      <Panel title={`Diferencia por piloto · ${SESS[cur].label}`}><ChartCanvas type="bar" data={chartData} options={chartOpts} height={280} /></Panel>
-      <Panel title="Detalle sim vs real">
+      <Panel title="Diferencia por piloto" sess={SESS[cur].label + ' · REAL vs SIM'}><ChartCanvas type="bar" data={chartData} options={chartOpts} height={280} /></Panel>
+      <Panel title="Detalle sim vs real" sess={SESS[cur].label + ' · REAL vs SIM'}>
         <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums">
           <thead><tr className="text-left text-slate-500 border-b border-[#1f2630]"><th className="py-1.5 pr-3">Piloto</th><th className="pr-3">Pos real</th><th className="pr-3">Pos sim</th><th className="pr-3">Mejor real</th><th className="pr-3">Mejor sim</th><th className="pr-3">Δ</th><th className="pr-3">Ideal real</th><th className="pr-3">Ideal sim</th><th className="pr-3">Δ</th><th className="pr-3">Vmax real</th><th className="pr-3">Vmax sim</th><th className="pr-3">Ritmo real</th><th className="pr-3">Ritmo sim</th><th>Δ</th></tr></thead>
           <tbody>{rows.map(r => <tr key={r.num} className={'border-b border-[#161c25] hover:bg-[#141a22] ' + (sel.includes(r.num) ? 'bg-[#131922]' : '')}>
@@ -577,20 +677,22 @@ function Comparativa({ sel }) {
         </table></div>
         <p className="text-[11px] text-slate-500 mt-2">Ritmo = media de las 3 mejores vueltas válidas (práctica/Q) o media de todas las válidas (Sprint/Carrera). Los pilotos con ≤ 4 vueltas en la sesión no se comparan.</p>
       </Panel>
-      <Panel title="Añadir más sesiones"><UploadHelp /></Panel>
+      <Panel title="Añadir más sesiones" sess={null}><UploadHelp /></Panel>
     </>}
   </div>;
 }
 
 /* ---------- App ---------- */
 function App() {
-  const [view, setViewState] = useState('auto'), [mid, setMid] = useState('FRI'), [tab, setTab] = useState('res'), [sel, setSel] = useState(DEFAULT_SEL), [target, setTarget] = useState('SPR');
+  const [view, setViewState] = useState('auto'), [mid, setMid] = useState('FRI'), [tab, setTab] = useState('res'), [sel, setSel] = useState(DEFAULT_SEL), [target, setTarget] = useState('SPR'), [sess, setSess] = useState('PR');
   const changeView = v => { setView(v); setViewState(v); };
   const M = MILESTONES.find(m => m.id === mid), mi = MILESTONES.indexOf(M);
   const snap = SNAP[mid], prev = mi > 0 ? SNAP[MILESTONES[mi - 1].id] : null;
   const orderedSel = useMemo(() => NUMS.filter(n => sel.includes(n)), [sel]);
   const c = DATA.circuit;
-  return <div className="min-h-screen">
+  const curS = M.sessions.includes(sess) ? sess : M.sessions[M.sessions.length - 1];          // active session: chosen in the header, kept inside the milestone
+  const scope = 'datos hasta ' + SESS[M.sessions[M.sessions.length - 1]].label;
+  return <ScopeCtx.Provider value={scope}><div className="min-h-screen">
     <header className="sticky top-0 z-30 border-b border-[#1f2630] bg-[#0a0c10]/95 backdrop-blur">
       <div className="max-w-[1500px] mx-auto px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2">
         <BrandMark />
@@ -601,6 +703,14 @@ function App() {
         <div className="ml-auto hidden md:flex items-center gap-3 text-[11px] text-slate-400">
           {c.weather && <span>☀ {c.weather.air}° · pista {c.weather.ground}° · hum. {c.weather.hum}%</span>}<span title={c.lapsEstimated.RAC ? 'Vueltas estimadas hasta que haya Carrera real' : ''}>{c.length} km · {c.lapsEstimated.RAC ? '~' : ''}{c.raceLaps} vtas</span><Badge real>{'REAL ' + SIDS_ALL.filter(s => SD[s].real).join(' ')}</Badge>{SIDS_ALL.some(s => !SD[s].real) && <Badge real={false}>{'SIM ' + SIDS_ALL.filter(s => !SD[s].real).join(' ')}</Badge>}</div>
       </div>
+      <div className="max-w-[1500px] mx-auto px-4 pb-2 flex items-center gap-1.5 overflow-x-auto" aria-label="Sesión activa">
+        <span className="text-[10px] uppercase tracking-[0.14em] text-slate-500 mr-1 shrink-0">Sesión</span>
+        {SIDS_ALL.map(x => { const ok = M.sessions.includes(x), real = SD[x].real, on = x === curS;
+          return <button key={x} disabled={!ok} onClick={() => setSess(x)} title={!ok ? 'Aún no disputada en este hito' : (real ? 'Datos reales' : 'Simulación') + ' · aplica a Telemetría y Sim vs Real'}
+            className={'shrink-0 px-2.5 py-1 rounded text-[11px] font-bold border flex items-center gap-1.5 transition ' + (on ? 'bg-red-600 border-red-500 text-white' : ok ? 'border-[#2a313c] text-slate-300 hover:border-slate-500' : 'border-[#1a2029] text-slate-600 opacity-50 cursor-not-allowed')}>
+            <span className={'w-1.5 h-1.5 rounded-full ' + (real ? 'bg-emerald-400' : 'bg-sky-400')} />{SESS[x].label}<span className="text-[9px] font-semibold opacity-70">{real ? 'REAL' : 'SIM'}</span></button>; })}
+        <span className="ml-2 text-[11px] text-slate-500 shrink-0 hidden md:inline">activa: <b className="text-slate-200">{sessTag(curS)}</b> · aplica a Telemetría y Sim vs Real</span>
+      </div>
       <div className="max-w-[1500px] mx-auto px-4 pb-1 flex items-center justify-between gap-3">
         <div className="flex gap-1 overflow-x-auto">{TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={'px-3 py-2 text-xs font-bold tracking-wide border-b-2 whitespace-nowrap ' + (tab === k ? 'border-red-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300')}>{l}</button>)}</div>
         <div className="flex items-center gap-2 shrink-0"><span className="text-[11px] text-slate-500 hidden sm:inline">Fuente</span>
@@ -609,18 +719,19 @@ function App() {
       </div>
     </header>
     <main className="max-w-[1500px] mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)] gap-4">
-      <aside className="lg:sticky lg:top-[104px] self-start"><RiderPanel sel={sel} setSel={setSel} snap={snap} /></aside>
+      <aside className="lg:sticky lg:top-[166px] self-start"><RiderPanel sel={sel} setSel={setSel} snap={snap} /></aside>
       <div className="min-w-0" key={view}>
-        {tab === 'res' && <Resumen snap={snap} prev={prev} M={M} sel={orderedSel} goPace={t => { setTarget(t); setTab('pace'); }} />}
-        {tab === 'tel' && <Telemetria snap={snap} M={M} sel={orderedSel} view={view} />}
+        {tab === 'res' && <Resumen snap={snap} prev={prev} M={M} sel={orderedSel} goPace={t => { setTarget(t); setTab('pace'); }} goSim={() => setTab('race')} />}
+        {tab === 'race' && <Simulador M={M} sel={orderedSel} />}
+        {tab === 'tel' && <Telemetria snap={snap} M={M} sel={orderedSel} view={view} sid={curS} />}
         {tab === 'pace' && <Ritmo snap={snap} M={M} sel={orderedSel} target={target} setTarget={setTarget} />}
         {tab === 'acc' && <Precision M={M} sel={orderedSel} view={view} />}
-        {tab === 'cmp' && <Comparativa sel={orderedSel} />}
+        {tab === 'cmp' && <Comparativa sel={orderedSel} sess={curS} />}
       </div>
     </main>
     <footer className="max-w-[1500px] mx-auto px-4 pb-8 text-[11px] text-slate-600 leading-relaxed">
       Sesiones reales: cronometraje oficial MotoGP / Tissot (PDFs «Chronological Analysis», {CIRC.short}). Sesiones simuladas: <b className="text-sky-400">simulación sintética</b> con semilla fija anclada al ritmo real del viernes — no son resultados oficiales — hasta que se añada su PDF a {CIRC.folder}/ y se refresque (<code>python tools/servidor.py</code>). El motor usa vueltas depuradas (out/in-laps, anuladas y &gt;107%), ignora a los pilotos con ≤ 4 vueltas en una sesión y normaliza por evolución de pista y neumático.
     </footer>
-  </div>;
+  </div></ScopeCtx.Provider>;
 }
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);

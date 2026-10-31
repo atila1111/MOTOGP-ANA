@@ -380,4 +380,77 @@ function compareSession(sid) {
     maeIdeal: mean(fin(rows.map(r => Math.abs(r.dIdeal)))), maePace: mean(rows.map(r => Math.abs(r.dPace))), biasPace: mean(rows.map(r => r.dPace)),
     maeV: mean(rows.map(r => Math.abs(r.dV))), rho, topReal: tr, topSim: ts, overlap: ts.filter(x => tr.includes(x)).length, exact: ts.filter((x, i) => tr[i] === x).length };
 }
+
+/* ---- race Monte Carlo: lap-by-lap Sunday simulation with adjustable track state ----
+   Base = pace + degradation of the latest forecast that does not know the race yet (so a real Sprint, if it exists, is already inside).
+   Everything below the base is an explicit, editable assumption (RACE_DEFAULTS): temperature sensitivity, wet pace, flag-to-flag bike swap, crash rate. */
+const RACE_DEFAULTS = { runs: 400, seed: 2026, cond: 'DRY', f2f: 'DRY>WET', switchLap: 8, pitLoss: 26, wetPen: 9, wetSd: 0.6, wetNoise: 1.8, crashPct: 3, wetCrashMult: 3,
+  kPace: 0.010, kDeg: 0.04, paceSd: 0.5, startLoss: START_LOSS };   // paceSd: uncertainty of each rider's base pace (s/lap, drawn once per run; the forecast misses real race pace by ~0.6 s/lap)
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* forecast the race is simulated from: latest milestone <= mid whose race result is not already known */
+function raceBase(mid) {
+  for (let i = MILESTONES.findIndex(m => m.id === mid); i >= 0; i--) { const sn = SNAP[MILESTONES[i].id]; if (!sn.race.known && sn.race.rows.length) return { mid: MILESTONES[i].id, rows: sn.race.rows, gridOff: sn.race.gridOff }; }
+  const sn = SNAP.SPR; return { mid: 'SPR', rows: sn.race.rows, gridOff: sn.race.gridOff };
+}
+/* conditions (air/track/humidity) the paces of the base were measured under: latest real race session, else latest real session */
+function raceRefCond() {
+  const real = ['SPR', 'FP2', 'Q2', 'Q1', 'PR', 'FP1'].find(s => SD[s] && SD[s].real && SD[s].official && SD[s].official.cond);
+  return real ? Object.assign({ sid: real }, SD[real].official.cond) : { sid: null, ground: 40, air: 30, hum: 60, cond: 'Dry' };
+}
+
+function simulateRaceMC(rows, P, N0) {
+  const rnd = mulberry32(P.seed >>> 0), gauss = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  const N = P.laps, nR = rows.length, dT = P.ground - P.refGround, dryAdj = P.kPace * dT, degMul = Math.max(0.3, 1 + P.kDeg * dT);
+  const R = rows.map(r => ({ num: r.num, grid: r.grid, a: r.pace - r.deg * (N0 - 2) / 2, b: r.deg, cons: clamp(0.5 * (r.sd || 0.3), 0.15, 0.35), unc: P.paceSd * clamp(1.5 - (r.conf || 50) / 100, 0.6, 1.3) }));
+  const condAt = k => P.cond === 'DRY' ? 'D' : P.cond === 'WET' ? 'W' : (P.f2f === 'DRY>WET' ? (k < P.switchLap ? 'D' : 'W') : (k < P.switchLap ? 'W' : 'D'));
+  const pBase = P.crashPct / 100 / N, pMech = 0.004 / N;
+  const wins = new Array(nR).fill(0), pods = new Array(nR).fill(0), dnfs = new Array(nR).fill(0), posSum = new Array(nR).fill(0), posList = R.map(() => []);
+  const finishOrders = [], cums = [];
+  for (let run = 0; run < P.runs; run++) {
+    const wetSkill = R.map(() => P.wetSd * gauss()), paceErr = R.map(r => r.unc * gauss()), pitLap = R.map(() => clamp(P.switchLap + Math.round(0.5 + 0.9 * gauss()), P.switchLap - 1, P.switchLap + 3));
+    const cum = R.map(() => 0), alive = R.map(() => true), done = R.map(() => 0), traj = R.map(() => new Float32Array(N).fill(NaN));
+    let order = R.map((_, i) => i).sort((x, y) => R[x].grid - R[y].grid), prevT = null;
+    for (let k = 1; k <= N; k++) {
+      const track = condAt(k), t = new Array(nR).fill(null);
+      for (let i = 0; i < nR; i++) {
+        if (!alive[i]) continue;
+        const r = R[i]; let tyre = track;                                         // tyre/bike set the rider is on
+        if (P.cond === 'F2F' && k < pitLap[i]) tyre = P.f2f === 'DRY>WET' ? 'D' : 'W';   // still on the pre-switch set until the pit lap
+        const mismatch = tyre !== track;
+        let lap;
+        if (track === 'D') lap = r.a + paceErr[i] + dryAdj + (k >= 2 ? r.b * degMul * (k - 2) : 0) + (mismatch ? P.wetPen * 0.8 : 0) + gauss() * r.cons;
+        else lap = r.a + paceErr[i] + dryAdj * 0.3 + P.wetPen + wetSkill[i] + 0.01 * (k - 2 > 0 ? k - 2 : 0) + (mismatch ? P.wetPen * 1.5 : 0) + gauss() * r.cons * P.wetNoise;
+        if (k === 1) lap += P.startLoss + 0.045 * r.grid + 0.5 * gauss();
+        if (P.cond === 'F2F' && k === pitLap[i]) lap += P.pitLoss + 1.2 * gauss();   // bike swap in the pit lane
+        const mult = (track === 'W' ? P.wetCrashMult : 1) * (mismatch ? 2 : 1);
+        if (rnd() < pBase * mult + pMech) { alive[i] = false; dnfs[i]++; done[i] = k - 1; continue; }
+        t[i] = lap;
+      }
+      if (prevT) { let prev = null;                                              // blocked behind a slower rider within 0.45 s
+        for (const i of order) { if (t[i] == null) continue; if (prev != null && cum[i] - cum[prev] < 0.45 && t[i] < t[prev] - 0.05 && rnd() > 0.45) t[i] = Math.max(t[i], t[prev] + 0.10); prev = i; } }
+      for (let i = 0; i < nR; i++) if (t[i] != null) { cum[i] += t[i]; done[i] = k; traj[i][k - 1] = cum[i]; }
+      order = order.filter(i => alive[i]).sort((x, y) => cum[x] - cum[y]); prevT = t;
+    }
+    const fin = R.map((_, i) => i).sort((x, y) => (alive[y] - alive[x]) || (alive[x] && alive[y] ? cum[x] - cum[y] : done[y] - done[x] || cum[x] - cum[y]));
+    fin.forEach((i, p) => { posList[i].push(alive[i] ? p + 1 : null); if (alive[i]) { posSum[i] += p + 1; if (p === 0) wins[i]++; if (p < 3) pods[i]++; } });
+    finishOrders.push(fin.map(i => alive[i] ? i : -1 - i)); cums.push(traj);
+  }
+  const riders = R.map((r, i) => {
+    const ps = posList[i].filter(x => x != null).sort((a, b) => a - b), q = f => ps.length ? ps[Math.min(ps.length - 1, Math.floor(f * ps.length))] : null;
+    return { num: r.num, grid: r.grid, win: wins[i] / P.runs, pod: pods[i] / P.runs, dnf: dnfs[i] / P.runs, mean: ps.length ? posSum[i] / ps.length : null, p10: q(0.1), p50: q(0.5), p90: q(0.9), exp: 0 };
+  });
+  // representative run: the one whose finishing order is closest to the mean positions
+  const meanPos = riders.map(r => r.mean == null ? nR : r.mean); let best = 0, bd = Infinity;
+  finishOrders.forEach((fo, ri) => { let d = 0; fo.forEach((v, p) => { const i = v < 0 ? -1 - v : v; d += Math.abs(p + 1 - meanPos[i]); }); if (d < bd) { bd = d; best = ri; } });
+  const traj = cums[best], posByLap = [], gapByLap = [];
+  for (let k = 0; k < N; k++) {
+    const idx = R.map((_, i) => i).filter(i => !isNaN(traj[i][k])).sort((x, y) => traj[x][k] - traj[y][k]), lead = idx.length ? traj[idx[0]][k] : 0;
+    posByLap.push(Object.fromEntries(idx.map((i, p) => [R[i].num, p + 1]))); gapByLap.push(Object.fromEntries(idx.map(i => [R[i].num, traj[i][k] - lead])));
+  }
+  const rep = finishOrders[best].map(v => v < 0 ? { num: R[-1 - v].num, dnf: true } : { num: R[v].num, dnf: false });
+  riders.sort((a, b) => (a.mean ?? 99) - (b.mean ?? 99)); riders.forEach((r, i) => r.exp = i + 1);
+  return { riders, rep, posByLap, gapByLap, params: P, N, dT, degMul, dryAdj };
+}
+
 /* ============================ /ENGINE ============================ */

@@ -24,15 +24,20 @@ SESSION_DIRS = ['FP1', 'PR', 'FP2', 'Q1', 'Q2', 'SPRINT', 'RACE']      # inner f
 # (a real Sprint/Race replaces them); lengths are the published track lengths. `salt` varies the seeded simulation per circuit.
 CIRCUITS = [
     {'id': 'malasya', 'folder': 'MALASYA', 'flag': '🇲🇾', 'short': 'Sepang', 'name': 'Petronas Sepang International Circuit', 'gp': 'Gran Premio de Malasia',
-     'length': 5.543, 'sprintLaps': 10, 'raceLaps': 20, 'record': {'t': 116.337, 'who': 'F. Bagnaia', 'year': 2024}, 'weather': None, 'salt': 0},
+     'length': 5.543, 'sprintLaps': 10, 'raceLaps': 20, 'record': {'t': 116.337, 'who': 'F. Bagnaia', 'year': 2024}, 'weather': None, 'salt': 0,
+     'lat': 2.7608, 'lon': 101.7380, 'raceDate': '2026-11-01', 'raceHour': 15,
+     'forecastUrl': 'https://weather.metoffice.gov.uk/forecast/w22rendfv#?date=2026-11-01',
+     # Met Office page read on 2026-10-31 for Sunday 15:00 local: 33 C, 20% chance of rain, sunny, wind 6 mph; humidity only as a daily range (49-96%).
+     # Track temperature and humidity at race time are estimates (track ~ air + 14 C under sun, as seen in PR/Sprint).
+     'forecast': {'air': 33, 'rain': 20, 'hum': 60, 'ground': 47, 'sky': 'Soleado', 'src': 'Met Office (Sepang), domingo 15:00', 'estimated': ['ground', 'hum']}},
     {'id': 'mandalika', 'folder': 'MANDALIKA', 'flag': '🇮🇩', 'short': 'Mandalika', 'name': 'Pertamina Mandalika International Street Circuit', 'gp': 'Gran Premio de Indonesia',
-     'length': 4.31, 'sprintLaps': 13, 'raceLaps': 27, 'record': None, 'weather': None, 'salt': 1},
+     'length': 4.31, 'sprintLaps': 13, 'raceLaps': 27, 'record': None, 'weather': None, 'salt': 1, 'lat': -8.8967, 'lon': 116.3014, 'raceHour': 15},
     {'id': 'portimao', 'folder': 'PORTIMAO', 'flag': '🇵🇹', 'short': 'Portimão', 'name': 'Autódromo Internacional do Algarve', 'gp': 'Gran Premio de Portugal',
-     'length': 4.592, 'sprintLaps': 12, 'raceLaps': 25, 'record': None, 'weather': None, 'salt': 2},
+     'length': 4.592, 'sprintLaps': 12, 'raceLaps': 25, 'record': None, 'weather': None, 'salt': 2, 'lat': 37.2272, 'lon': -8.6267, 'raceHour': 14},
     {'id': 'qatar', 'folder': 'QATAR', 'flag': '🇶🇦', 'short': 'Lusail', 'name': 'Lusail International Circuit', 'gp': 'Gran Premio de Catar',
-     'length': 5.38, 'sprintLaps': 11, 'raceLaps': 22, 'record': None, 'weather': None, 'salt': 3},
+     'length': 5.38, 'sprintLaps': 11, 'raceLaps': 22, 'record': None, 'weather': None, 'salt': 3, 'lat': 25.4900, 'lon': 51.4542, 'raceHour': 19},
     {'id': 'valencia', 'folder': 'VALENCIA', 'flag': '🇪🇸', 'short': 'Valencia', 'name': 'Circuit Ricardo Tormo', 'gp': 'Gran Premio de la Comunitat Valenciana',
-     'length': 4.005, 'sprintLaps': 13, 'raceLaps': 27, 'record': None, 'weather': None, 'salt': 4},
+     'length': 4.005, 'sprintLaps': 13, 'raceLaps': 27, 'record': None, 'weather': None, 'salt': 4, 'lat': 39.4589, 'lon': -0.6310, 'raceHour': 14},
 ]
 DEFAULT_CIRCUIT = 'malasya'
 def circuit_dir(c): return Path(PDF_OVERRIDE) if PDF_OVERRIDE and c is CIRCUITS[0] else ROOT / c['folder']
@@ -877,6 +882,7 @@ def build_circuit(circ):
         lr = ci['records'].get('lap')
         if lr: cinfo['record'] = {'t': lr['t'], 'who': lr['who'], 'year': lr['year']}
         if ci['info'].get('lengthM') and abs(ci['info']['lengthM'] / 1000 - circ['length']) > 0.002: log(f'  ! Longitud del PDF {ci["info"]["lengthM"]} m distinta de la tabla ({circ["length"]} km)')
+    cinfo.update({k: circ.get(k) for k in ('lat', 'lon', 'raceDate', 'raceHour', 'forecastUrl', 'forecast')})
     cinfo.update(sprintLaps=sprl, raceLaps=racl, lapsEstimated={'SPR': 'SPR' not in real_sessions and 'SPR' not in grids, 'RAC': 'RAC' not in real_sessions and 'RAC' not in grids})
     wsid = next((x for x in reversed(SIDS) if x in real_sessions and real_sessions[x]['official'].get('cond')), None)      # header weather = latest real session
     if wsid: c_ = real_sessions[wsid]['official']['cond']; cinfo['weather'] = {'air': c_.get('air'), 'hum': c_.get('hum'), 'ground': c_.get('ground'), 'cond': c_.get('cond'), 'sid': wsid}

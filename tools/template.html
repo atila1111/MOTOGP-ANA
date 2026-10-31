@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MotoGP Telemetry</title>
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  html,body{background:#0a0c10;color:#cbd5e1;font-family:'Segoe UI',Inter,system-ui,sans-serif}
+  body{background-image:radial-gradient(1200px 400px at 10% -10%,rgba(220,38,38,.10),transparent),repeating-linear-gradient(135deg,transparent 0 22px,rgba(255,255,255,.012) 22px 23px)}
+  .tabular-nums{font-variant-numeric:tabular-nums}
+  ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#262d38;border-radius:4px}::-webkit-scrollbar-track{background:transparent}
+  select option:disabled{color:#64748b}
+</style>
+</head>
+<body>
+<div id="root"><div style="padding:40px;color:#94a3b8;font-family:monospace">Cargando telemetría…</div></div>
+<script>
+/* Un conjunto de datos por circuito (carpetas MALASYA/, MANDALIKA/, PORTIMAO/, QATAR/, VALENCIA/ → <sesión>/). Un circuito sin FP1 + PR reales queda «pendiente» (data = null). */
+const ALL = __DATA__;
+const CIRCUITS = ALL.circuits;
+const CUR = (function () {
+  const ids = CIRCUITS.map(c => c.id);
+  let h = (location.hash || '').replace('#', '').toLowerCase();
+  if (ids.includes(h)) return h;
+  try { h = localStorage.getItem('motogp.circuit'); if (ids.includes(h)) return h; } catch (e) {}
+  return ALL.default;
+})();
+const CIRC = CIRCUITS.find(c => c.id === CUR);
+const DATA = ALL.data[CUR];
+document.title = 'MotoGP Telemetry · ' + CIRC.short;
+</script>
+<script type="text/plain" id="src-engine">
+__ENGINE__
+</script>
+<script type="text/plain" id="src-shell">
+__SHELL__
+</script>
+<script type="text/plain" id="src-ui">
+__UI__
+</script>
+<script>
+/* Carga ordenada: shell (selector de circuito, pantalla «pendiente») → motor + interfaz solo si el circuito tiene datos. */
+(function () {
+  function run(id, jsx) {
+    var code = document.getElementById(id).textContent;
+    if (jsx) code = Babel.transform(code, { presets: ['react'] }).code;
+    var s = document.createElement('script'); s.textContent = code; document.head.appendChild(s);
+  }
+  try {
+    run('src-shell', true);
+    if (DATA) { run('src-engine', false); run('src-ui', true); }
+    else ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(PendingApp));
+  } catch (e) {
+    document.getElementById('root').innerHTML = '<pre style="color:#f87171;padding:24px;white-space:pre-wrap">Error al cargar el dashboard:\n\n' + (e && e.stack || e) + '</pre>';
+    throw e;
+  }
+})();
+</script>
+</body>
+</html>

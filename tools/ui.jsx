@@ -734,7 +734,7 @@ function App() {
       </div>
       <div className="max-w-[1500px] mx-auto px-4 pb-1 flex items-center justify-between gap-3">
         <div className="flex gap-1 overflow-x-auto">{TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={'px-3 py-2 text-xs font-bold tracking-wide border-b-2 whitespace-nowrap ' + (tab === k ? 'border-red-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300')}>{l}</button>)}</div>
-        <div className="flex items-center gap-2 shrink-0"><span className="text-[11px] text-slate-500 hidden sm:inline">Fuente</span>
+        <div className="flex items-center gap-2 shrink-0"><DescargaBtn /><span className="text-[11px] text-slate-500 hidden sm:inline">Fuente</span>
           <Chip active={view === 'auto'} onClick={() => changeView('auto')} title="Usa la sesión real cuando existe y la simulación cuando no">Real si existe</Chip>
           <Chip active={view === 'sim'} disabled={!HAS_SIM_OVERRIDE} onClick={() => changeView('sim')} title={HAS_SIM_OVERRIDE ? 'Ignora las sesiones reales de sábado/domingo y usa su simulación' : 'Aún no hay sesiones reales de sáb/dom que sustituir'}>Solo simulación</Chip></div>
       </div>

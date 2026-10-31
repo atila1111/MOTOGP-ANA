@@ -7,6 +7,10 @@ __pycache__/
 *.pdf
 !MALASYA/**/*.pdf
 
+# Calendario descargado de motogp.com: solo el de Malasya (ejemplo)
+*/evento.json
+!MALASYA/evento.json
+
 # Material antiguo de Mandalika (graficas y scripts sueltos, no forman parte del motor)
 MANDALIKA/analisis_FP1/
 MANDALIKA/graficas/
@@ -16,3 +20,6 @@ MANDALIKA/graficas_corregidas/
 .DS_Store
 Thumbs.db
 .claude/
+
+# PDF de temporadas anteriores bajados con tools/descargar.py --año
+HISTORICO/

@@ -84,6 +84,7 @@ subas sus PDF a MALASYA/RACE/.
    requirements.txt       dependencias de Python
    README.txt             este manual
    tools/
+     descargar.py         baja los PDF oficiales de motogp.com a CIRCUITO/SESION/
      fotos.py             descarga la foto de cada piloto (API de motogp.com)
      fotos/<numero>.webp  fotos ya descargadas (se incrustan en index.html)
      pipeline.py          lee los PDF, simula y construye los datos
@@ -104,6 +105,31 @@ instalar y iniciar). En git las carpetas vacias llevan un fichero
 
 5. COMO CARGAR UN FIN DE SEMANA
 ---------------------------------------------------------------------
+5.0 Descarga automatica (recomendada)
+    En vez de copiar los PDF a mano, baja los oficiales desde motogp.com:
+      - Con el servidor en marcha, pulsa el boton "PDF motogp.com" de la
+        cabecera del panel (aparece tambien en la pantalla de un circuito
+        pendiente): descarga lo que falte o haya cambiado del circuito
+        activo y recarga la pagina.
+      - Desde la consola:
+          python tools/descargar.py                 evento en curso
+          python tools/descargar.py --circuito qatar    un circuito concreto
+          python tools/descargar.py --todos         todos los configurados
+          python tools/descargar.py --año 2025 --circuito malasya
+                                                    temporada anterior: va a HISTORICO/2025/MALASYA/
+          python tools/descargar.py --simular       muestra que bajaria
+    Cada sesion terminada se guarda en su carpeta con el nombre de la web;
+    Circuit Information, Entry, Rider Statistics y Event Maximum Speed van a
+    CIRCUITO/EVENTO/. Si un PDF cambia de tamano (resultado provisional ->
+    definitivo, Event Max Speed que crece con cada sesion) se sustituye; si
+    la web ya no sirve un fichero, se conserva el local. Tambien guarda
+    CIRCUITO/evento.json con el calendario, de donde sale la fecha y hora
+    de la Carrera para la prevision meteorologica.
+    Cada circuito de CIRCUITS (pipeline.py) lleva el codigo de evento de la
+    API ('api': 'MAL', 'INA', 'POR', 'QAT', 'VAL'). Solo se descargan PDF
+    ya publicados, de la categoria MotoGP. Son propiedad de MotoGP/Dorna:
+    uso privado y sin sobrecargar el servicio (una peticion a la vez).
+
 5.1 Que PDF subir
 
 En la web oficial de MotoGP, apartado de resultados de cada sesion,

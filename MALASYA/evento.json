@@ -1,0 +1,109 @@
+{
+ "event": "MAL",
+ "year": 2026,
+ "name": "GRAND PRIX OF MALAYSIA",
+ "date_start": "2026-10-30",
+ "date_end": "2026-11-01",
+ "circuit": "Petronas Sepang International Circuit",
+ "sessions": [
+  {
+   "sid": "FP1",
+   "type": "FP",
+   "number": 1,
+   "date": "2026-10-30T10:45:00",
+   "status": "FINISHED",
+   "condition": {
+    "track": "Dry",
+    "air": "30º",
+    "humidity": "74%",
+    "ground": "37º",
+    "weather": "Cloudy"
+   }
+  },
+  {
+   "sid": "PR",
+   "type": "PR",
+   "number": null,
+   "date": "2026-10-30T15:00:00",
+   "status": "FINISHED",
+   "condition": {
+    "track": "Dry",
+    "air": "34º",
+    "humidity": "61%",
+    "ground": "49º",
+    "weather": "Cloudy"
+   }
+  },
+  {
+   "sid": "FP2",
+   "type": "FP",
+   "number": 2,
+   "date": "2026-10-31T10:10:00",
+   "status": "FINISHED",
+   "condition": {
+    "track": "Dry",
+    "air": "31º",
+    "humidity": "69%",
+    "ground": "38º",
+    "weather": "Clear"
+   }
+  },
+  {
+   "sid": "Q1",
+   "type": "Q",
+   "number": 1,
+   "date": "2026-10-31T10:50:00",
+   "status": "FINISHED",
+   "condition": {
+    "track": "Dry",
+    "air": "32º",
+    "humidity": "66%",
+    "ground": "41º",
+    "weather": "Partly-Cloudy"
+   }
+  },
+  {
+   "sid": "Q2",
+   "type": "Q",
+   "number": 2,
+   "date": "2026-10-31T11:15:00",
+   "status": "FINISHED",
+   "condition": {
+    "track": "Dry",
+    "air": "33º",
+    "humidity": "63%",
+    "ground": "43º",
+    "weather": "Partly-Cloudy"
+   }
+  },
+  {
+   "sid": "SPR",
+   "type": "SPR",
+   "number": null,
+   "date": "2026-10-31T15:00:00",
+   "status": "FINISHED",
+   "condition": {
+    "track": "Dry",
+    "air": "36º",
+    "humidity": "52%",
+    "ground": "51º",
+    "weather": "Partly-Cloudy"
+   }
+  },
+  {
+   "sid": "RAC",
+   "type": "RAC",
+   "number": null,
+   "date": "2026-11-01T15:00:00",
+   "status": "NOT-STARTED",
+   "condition": {
+    "track": "",
+    "air": "º",
+    "humidity": "%",
+    "ground": "º",
+    "weather": ""
+   }
+  }
+ ],
+ "updated": "2026-10-31 12:55:29"
+}

@@ -10,7 +10,7 @@ SPR, RAC), and builds index.html with ONE dataset per circuit:
 
 Run:  python tools/actualizar.py      (static rebuild)   |   python tools/servidor.py   (rebuild on every F5)
 """
-import json, math, random, re, statistics as st, sys, time
+import base64, json, math, random, re, statistics as st, sys, time
 from pathlib import Path
 
 import pdfplumber
@@ -18,6 +18,14 @@ import pdfplumber
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = ROOT / 'tools'
 import os
+PHOTO_DIR = TOOLS / 'fotos'                                 # <numero>.webp, downloaded by tools/fotos.py
+_PHOTOS = {}
+def photo_uri(num):
+    """Rider photo as a data URI (so index.html stays a single file), or None when tools/fotos/<num>.webp does not exist."""
+    if num not in _PHOTOS:
+        f = PHOTO_DIR / f'{num}.webp'
+        _PHOTOS[num] = 'data:image/webp;base64,' + base64.b64encode(f.read_bytes()).decode('ascii') if f.exists() else None
+    return _PHOTOS[num]
 PDF_OVERRIDE = os.environ.get('MOTOGP_PDF_DIR')            # test hook: replaces the folder of the FIRST circuit
 SESSION_DIRS = ['FP1', 'PR', 'FP2', 'Q1', 'Q2', 'SPRINT', 'RACE']      # inner folders prepared for every circuit
 # One entry per circuit folder in the project root. Lap counts are only the defaults used while the Sprint/Race are simulated
@@ -753,7 +761,7 @@ def build_circuit(circ):
     for i, n in enumerate(nums):
         m = meta[n]; hue = (i * 137.508) % 360; name = m['name'].replace('�', 'Ñ')
         riders.append({'num': n, 'name': name, 'short': SHORT.get(n, name.split()[-1]), 'team': m['team'], 'bike': m['bike'], 'nat': m['nat'],
-                       'color': 'hsl(%d,78%%,%d%%)' % (hue, 58 if i % 2 == 0 else 66)})
+                       'color': 'hsl(%d,78%%,%d%%)' % (hue, 58 if i % 2 == 0 else 66), 'photo': photo_uri(n)})
     # (rider enrichment from the event-level documents happens after they are parsed, see below)
     # --- real sessions (compact laps + official reports)
     real_sessions = {}

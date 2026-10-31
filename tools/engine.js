@@ -16,6 +16,10 @@ const MILESTONES = [
   { id: 'RAC', label: 'Post-Carrera', short: 'DOM', sessions: ['FP1', 'PR', 'FP2', 'Q1', 'Q2', 'SPR', 'RAC'], blurb: 'Carrera larga: gestión de neumáticos y ritmo de carrera' },
 ];
 const COMP_ADJ = { S: -0.09, M: 0, H: 0.15 };       // normalisation to rear Medium (s/lap)
+/* tyre label -> S / M / H / W. Real PDFs write "Soft", "Medium", "Hard", "Wet-Soft"...; the simulation already uses S/M/H.
+   (Before this mapping the real stints were never normalised: COMP_ADJ["Soft"] was undefined.) */
+const compKey = c => { if (!c) return null; const t = String(c).replace(/^Slick-/i, ''); return /^wet/i.test(t) ? 'W' : t.length === 1 ? t.toUpperCase() : t[0].toUpperCase(); };
+const isWetTyre = c => compKey(c) === 'W';
 const CAL = {                                         // offsets practice -> race conditions (s/lap)
   spr: { short: 0.20, mini: 0.30, best: 0.46 },
   race: { long: 0.12, short: 0.34, mini: 0.42, best: 0.77 },
@@ -57,6 +61,7 @@ function classify(sid, laps) {
     else if (first) why = 'OUT';
     else if (l.p) why = 'IN';
     if (!why && l.x) why = 'ANU';
+    if (!why && isWetTyre(l.r) && !isWetTyre(laps[0] && laps[0].r)) why = 'WET';   // bike swapped to wets on a dry track (pit incident): pace says nothing about the rider
     return Object.assign({}, l, { why });
   });
   const ok = res.filter(l => !l.why).map(l => l.t);
@@ -80,7 +85,7 @@ function buildCls(sd) {
   }
   return { cls, ex };
 }
-const sectorUsable = l => !['OUT', 'IN', 'ANU', 'SAL'].includes(l.why);
+const sectorUsable = l => !['OUT', 'IN', 'ANU', 'SAL', 'WET'].includes(l.why);
 
 /* ---- context for a milestone: available sessions + track-evolution offsets ---- */
 function buildCtx(mid) {
@@ -124,15 +129,15 @@ function stintsFor(sid, num, ctx) {
     if (ok) { if (!cur) { cur = []; out.push(cur); } cur.push(l); } else cur = null;
   }
   return out.filter(a => a.length >= 3).map(a => {
-    const tn = a.map(l => l.t - offT - (COMP_ADJ[l.r] || 0));
+    const tn = a.map(l => l.t - offT - (COMP_ADJ[compKey(l.r)] || 0));
     const fit = linreg(a.map((_, i) => i), tn);
-    return { sid, num, len: a.length, laps: a, tn, med: median(tn), sd: stdev(tn), a: fit.a, b: fit.b, comp: a[0].r, run: a[0].run, kind };
+    return { sid, num, len: a.length, laps: a, tn, med: median(tn), sd: stdev(tn), a: fit.a, b: fit.b, comp: a[0].r, compF: a[0].f, run: a[0].run, kind };
   });
 }
 
 function analyzeRider(num, ctx) {
   const o = { num, best: Infinity, bestN: Infinity, bestSid: null, sec: [Infinity, Infinity, Infinity, Infinity], secN: [Infinity, Infinity, Infinity, Infinity],
-    bestQ: Infinity, vmax: 0, vtop5: 0, vmaxBy: {}, vtop5By: {}, cnt: { total: 0, clean: 0, OUT: 0, IN: 0, ANU: 0, LENTA: 0, SAL: 0 }, cleanN: [], stP: [], bySession: {} };
+    bestQ: Infinity, vmax: 0, vtop5: 0, vmaxBy: {}, vtop5By: {}, cnt: { total: 0, clean: 0, OUT: 0, IN: 0, ANU: 0, LENTA: 0, SAL: 0, WET: 0 }, cleanN: [], stP: [], bySession: {} };
   for (const sid of ctx.avail) {
     const cl = CLS[sid][num] || [], offL = ctx.off[sid], offT = sum(offL), kind = SESS[sid].kind;
     const OFF = SD[sid].official || {}, bp = OFF.bp && OFF.bp[num], spd = OFF.spd && OFF.spd[num];
@@ -143,8 +148,8 @@ function analyzeRider(num, ctx) {
       o.cnt.total++; if (l.why) o.cnt[l.why]++; else { o.cnt.clean++; bs.clean++; }
       if (l.v) speeds.push(l.v);
       if (!l.why) {
-        if (l.t < bs.best) bs.best = l.t;
-        if (l.t < o.best) { o.best = l.t; o.bestSid = sid; }
+        if (l.t < bs.best) { bs.best = l.t; bs.bestTyre = { f: l.f, r: l.r }; }
+        if (l.t < o.best) { o.best = l.t; o.bestSid = sid; o.bestTyre = { f: l.f, r: l.r }; }
         if (kind !== 'race') { const tn = l.t - offT; o.cleanN.push(tn); if (tn < o.bestN) o.bestN = tn; const tq = l.t - sum(ctx.offQ[sid]); if (tq < o.bestQ) o.bestQ = tq; }
       }
       if (sectorUsable(l)) for (let k = 0; k < 4; k++) if (!l.sx[k] && l.s[k] < bs.secStrict[k]) bs.secStrict[k] = l.s[k];
@@ -189,9 +194,9 @@ function sprintEst(A) {
   if (pool.length) {
     const s = pool.reduce((m, x) => x.med < m.med ? x : m, pool[0]);
     const b = shrink(s.b, s.len, 0.025, 5);
-    return { a: s.med - b * (s.len - 1) / 2 + CAL.spr[mode], b, sd: s.sd, len: s.len, mode, comp: s.comp };
+    return { a: s.med - b * (s.len - 1) / 2 + CAL.spr[mode], b, sd: s.sd, len: s.len, mode, comp: s.comp, compF: s.compF };
   }
-  return { a: A.bestN + CAL.spr.best, b: 0.03, sd: 0.2, len: 0, mode: 'best' };
+  return { a: A.bestN + CAL.spr.best, b: 0.03, sd: 0.2, len: 0, mode: 'best', comp: A.bestTyre && A.bestTyre.r, compF: A.bestTyre && A.bestTyre.f };
 }
 function raceEst(A, spr) {
   const st = A.stP; let pool = st.filter(s => s.len >= 9), mode = 'long';
@@ -201,8 +206,8 @@ function raceEst(A, spr) {
   if (pool.length) {
     const s = pool.reduce((m, x) => (x.len > m.len || (x.len === m.len && x.med < m.med)) ? x : m, pool[0]);
     const b = shrink(s.b, s.len, 0.03, 6);
-    e = { a: s.med - b * (s.len - 1) / 2 + CAL.race[mode], b, sd: s.sd, len: s.len, mode, comp: s.comp };
-  } else e = { a: A.bestN + CAL.race.best, b: 0.03, sd: 0.2, len: 0, mode: 'best' };
+    e = { a: s.med - b * (s.len - 1) / 2 + CAL.race[mode], b, sd: s.sd, len: s.len, mode, comp: s.comp, compF: s.compF };
+  } else e = { a: A.bestN + CAL.race.best, b: 0.03, sd: 0.2, len: 0, mode: 'best', comp: A.bestTyre && A.bestTyre.r, compF: A.bestTyre && A.bestTyre.f };
   if (spr && spr.len >= 6) {   // blend with real Sprint pace once available
     const aS = spr.a + CAL.sprToRace;
     e.a = 0.45 * e.a + 0.55 * aS; e.b = 0.5 * e.b + 0.5 * shrink(spr.b, spr.len, 0.03, 6, 0.25); e.mode = e.mode + '+spr';
@@ -213,6 +218,10 @@ const totalTime = (a, b, N, pen) => a + START_LOSS + (N - 1) * a + b * (N - 1) *
 const paceOf = (a, b, N) => a + b * (N - 2) / 2;
 
 /* real race pace (laps 2..N normalised to rear Medium) */
+function realRowInfo(sid, num) {
+  const s = realRaceStint(sid, num); if (!s) return {};
+  return { pace: mean(s.tn), deg: s.b, sd: s.sd, len: s.len, mode: 'real', tyre: { f: s.compF, r: s.comp } };
+}
 function realRaceStint(sid, num, ctx) {
   const s = stintsFor(sid, num, ctx || { off: { [sid]: [0, 0, 0, 0] } });
   return s.length ? s.reduce((m, x) => x.len > m.len ? x : m, s[0]) : null;
@@ -241,13 +250,14 @@ function predictions(mid) {
       const raw = sid => classify(sid, SD[sid].riders[String(n)] || []).filter(l => !l.why);
       const cl = raw('Q2').length ? raw('Q2') : raw('Q1');
       const t = cl.length ? Math.min(...cl.map(l => l.t)) : null;
-      return { num: n, pos: i + 1, T: t, conf: 100 };
+      const bl = cl.length ? cl.reduce((m, x) => x.t < m.t ? x : m, cl[0]) : null;
+      return { num: n, pos: i + 1, T: t, conf: 100, tyre: bl ? { f: bl.f, r: bl.r } : null };
     });
   } else {
     pole.rows = NUMS.filter(hasData).map(n => {
       const a = A[n], T = a.bestQ + 1.4 * evo - 0.4 * (isFinite(a.margin) ? a.margin : 0.1) + 0.35 * a.sd3 + Math.max(0, 6 - a.nPush) * 0.04;
       const conf = Math.round(clamp(38 + Math.min(40, a.nPush * 2.2) - a.sd3 * 40, 5, 95));
-      return { num: n, T, conf, margin: a.margin, sd3: a.sd3, ideal: a.ideal, best: a.best };
+      return { num: n, T, conf, margin: a.margin, sd3: a.sd3, ideal: a.ideal, best: a.best, tyre: a.bestTyre };
     }).sort((x, y) => x.T - y.T).map((r, i) => Object.assign(r, { pos: i + 1 }));
   }
   const gridPos = {};
@@ -262,25 +272,25 @@ function predictions(mid) {
   const sprint = { id: 'SPR', label: 'Sprint', known: sprKnown, rows: [], gridOff: ctx.gridOff.SPR };
   const sprEstBy = {};
   for (const n of NUMS) if (hasData(n)) sprEstBy[n] = sprintEst(A[n]);
-  if (sprKnown) sprint.rows = SD.SPR.results.map(r => ({ num: r.num, pos: r.pos, T: r.time, gap: r.gap, status: r.status, conf: 100 }));
+  if (sprKnown) sprint.rows = SD.SPR.results.map(r => Object.assign({ num: r.num, pos: r.pos, T: r.time, gap: r.gap, status: r.status, conf: 100 }, realRowInfo('SPR', r.num)));
   else {
     sprint.rows = NUMS.filter(hasData).filter(starter(ctx.gridS, ctx.gridOff.SPR)).map(n => {
       const e = sprEstBy[n], pen = 0.10 * (gpS(n) - 1) - 0.003 * ((A[n].vtop5 || vmed) - vmed) * (N1 - 1);
       const pr = priorOf(n), T = totalTime(e.a + evo + pr, e.b, N1, pen);
-      return { num: n, T, prior: pr, pace: paceOf(e.a + evo + pr, e.b, N1), deg: e.b, sd: e.sd, mode: e.mode, len: e.len, conf: confOf(e, A[n].nPush, ctx.gridOff.SPR ? 6 : ctx.grid ? 4 : 0), grid: gpS(n) };
+      return { num: n, T, tyre: { f: e.compF, r: e.comp }, prior: pr, pace: paceOf(e.a + evo + pr, e.b, N1), deg: e.b, sd: e.sd, mode: e.mode, len: e.len, conf: confOf(e, A[n].nPush, ctx.gridOff.SPR ? 6 : ctx.grid ? 4 : 0), grid: gpS(n) };
     }).sort((x, y) => x.T - y.T);
     const w = sprint.rows[0].T; sprint.rows.forEach((r, i) => { r.pos = i + 1; r.gap = r.T - w; });
   }
   // ---- RACE
   const race = { id: 'RAC', label: 'Carrera', known: racKnown, rows: [], gridOff: ctx.gridOff.RAC };
-  if (racKnown) race.rows = SD.RAC.results.map(r => ({ num: r.num, pos: r.pos, T: r.time, gap: r.gap, status: r.status, conf: 100 }));
+  if (racKnown) race.rows = SD.RAC.results.map(r => Object.assign({ num: r.num, pos: r.pos, T: r.time, gap: r.gap, status: r.status, conf: 100 }, realRowInfo('RAC', r.num)));
   else {
     race.rows = NUMS.filter(hasData).filter(starter(ctx.gridR, ctx.gridOff.RAC)).map(n => {
       let sprS = null;
       if (sprKnown && !incidentsOf(SD, 'SPR', n).length) { const s = realRaceStint('SPR', n); if (s) sprS = { a: s.a, b: s.b, len: s.len }; }   // a Sprint with a pit stop / crash says nothing about that rider's race pace
       const e = raceEst(A[n], sprS), pen = 0.06 * (gpR(n) - 1) - 0.003 * ((A[n].vtop5 || vmed) - vmed) * (N2 - 1);
       const pr = priorOf(n), T = totalTime(e.a + evo + pr, e.b, N2, pen);
-      return { num: n, T, prior: pr, pace: paceOf(e.a + evo + pr, e.b, N2), deg: e.b, sd: e.sd, mode: e.mode, len: e.len, conf: confOf(e, A[n].nPush, (sprKnown ? 4 : 0) + (ctx.gridOff.RAC ? 2 : 0)), grid: gpR(n), vmax: A[n].vmax };
+      return { num: n, T, tyre: { f: e.compF, r: e.comp }, prior: pr, pace: paceOf(e.a + evo + pr, e.b, N2), deg: e.b, sd: e.sd, mode: e.mode, len: e.len, conf: confOf(e, A[n].nPush, (sprKnown ? 4 : 0) + (ctx.gridOff.RAC ? 2 : 0)), grid: gpR(n), vmax: A[n].vmax };
     }).sort((x, y) => x.T - y.T);
     const w = race.rows[0].T; race.rows.forEach((r, i) => { r.pos = i + 1; r.gap = r.T - w; });
   }

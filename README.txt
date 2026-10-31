@@ -84,6 +84,8 @@ subas sus PDF a MALASYA/RACE/.
    requirements.txt       dependencias de Python
    README.txt             este manual
    tools/
+     fotos.py             descarga la foto de cada piloto (API de motogp.com)
+     fotos/<numero>.webp  fotos ya descargadas (se incrustan en index.html)
      pipeline.py          lee los PDF, simula y construye los datos
      servidor.py          servidor local: reconstruye al pulsar F5
      actualizar.py        reconstruye index.html sin servidor
@@ -230,6 +232,17 @@ Pestanas:
     carreras reales: sirven para comparar escenarios.
     Los datos de previsión del circuito (coordenadas, fecha, enlace y
     prevision manual) se editan en la lista CIRCUITS de tools/pipeline.py.
+
+Fotos y neumaticos:
+   - Las tarjetas del Top 3 y los chips de podio llevan la foto del
+     piloto. Se descargan con  python tools/fotos.py  (usa Pillow, que ya
+     instala pdfplumber); si falta una foto se muestra el punto de color.
+     Son propiedad de MotoGP/Dorna: uso privado, como los PDF.
+   - Neum. D/T muestra el neumatico delantero y trasero (S blando, M medio,
+     H duro, W lluvia) de la tanda que sustenta cada ritmo, de la mejor
+     vuelta en la tabla de vuelta ideal y de la sesion en Sprint/Carrera.
+     Los ritmos se normalizan al neumatico trasero Medium; las vueltas con
+     neumatico de lluvia en una sesion en seco se descartan.
 
 Notas de lectura:
    - Ideal = suma de los mejores sectores aunque vengan de vueltas

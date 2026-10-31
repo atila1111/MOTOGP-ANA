@@ -14,7 +14,7 @@ LOCK = threading.Lock()
 CACHE = {'sig': None, 'html': b'', 'error': None}
 
 def signature():
-    files = pipeline.all_pdfs() + [pipeline.TOOLS / n for n in ('engine.js', 'ui.jsx', 'shell.jsx', 'template.html', 'pipeline.py')]
+    files = pipeline.all_pdfs() + [pipeline.TOOLS / n for n in ('engine.js', 'ui.jsx', 'shell.jsx', 'template.html', 'pipeline.py')] + list(pipeline.PHOTO_DIR.glob('*.webp'))
     return tuple(sorted((str(p), p.stat().st_mtime_ns) for p in files if p.exists()))
 
 def current_html():

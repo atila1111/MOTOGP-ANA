@@ -40,6 +40,20 @@ function Panel({ title, right, children, className = '', sess }) {
       <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-300 flex flex-wrap items-center gap-x-2 gap-y-1">{title}{tag && <span className="px-1.5 py-0.5 rounded border border-red-500/40 bg-red-500/10 text-red-300 normal-case tracking-normal font-bold text-[10px]">{tag}</span>}</h3><div className="flex items-center gap-2">{right}</div></header>}
     <div className="p-4">{children}</div></section>;
 }
+/* rider photo (cut-out from motogp.com, embedded by pipeline.py): head and shoulders in a rounded square ringed with the rider's colour */
+function Avatar({ n, size = 44 }) {
+  const r = RIDER[n];
+  if (!r || !r.photo) return <Dot n={n} />;
+  return <span className="inline-block shrink-0 overflow-hidden rounded-md align-middle" style={{ width: size, height: size, background: `linear-gradient(160deg, ${r.color}66, #161c25)`, boxShadow: `0 0 0 2px ${r.color}` }}>
+    <img src={r.photo} alt={r.short} loading="lazy" style={{ width: size * 1.75, maxWidth: 'none', marginLeft: -size * 0.375, marginTop: size * 0.04, display: 'block' }} /></span>;
+}
+const TYRE_CLS = { S: 'bg-red-500/20 text-red-300 border-red-500/50', M: 'bg-yellow-400/20 text-yellow-200 border-yellow-400/50', H: 'bg-slate-300/20 text-slate-100 border-slate-300/50', W: 'bg-sky-500/20 text-sky-300 border-sky-500/50' };
+/* front / rear tyre compound of a stint or lap: S(oft) M(edium) H(ard) W(et) */
+function Tyre({ t }) {
+  if (!t || (!t.f && !t.r)) return <span className="text-slate-600">—</span>;
+  const pill = (c, lab) => { const k = compKey(c); return k && TYRE_CLS[k] ? <span title={lab + ': ' + c} className={'inline-block w-4 text-center text-[10px] font-bold rounded border ' + TYRE_CLS[k]}>{k}</span> : <span className="text-slate-600">·</span>; };
+  return <span className="inline-flex gap-1" title="Delantero / trasero">{pill(t.f, 'Delantero')}{pill(t.r, 'Trasero')}</span>;
+}
 function Dot({ n }) { return <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: RIDER[n].color }} />; }
 function Num({ n }) { return <span className="font-bold text-[11px] px-1 rounded bg-[#1a2029] text-slate-300 tabular-nums">#{n}</span>; }
 function Conf({ v }) {
@@ -79,9 +93,9 @@ function PodiumCard({ target, snap, prev, onOpen }) {
         const d = pp ? pp - (i + 1) : 0;
         return <li key={r.num} className="flex items-center gap-3 px-4 py-3">
           <div className={'w-7 h-7 rounded flex items-center justify-center font-black text-sm ' + (i === 0 ? 'bg-amber-400 text-black' : i === 1 ? 'bg-slate-300 text-black' : 'bg-orange-700 text-white')}>{i + 1}</div>
-          <Dot n={r.num} />
+          <Avatar n={r.num} size={52} />
           <div className="min-w-0 flex-1"><div className="font-bold text-slate-100 truncate">{RIDER[r.num].name}</div>
-            <div className="text-[11px] text-slate-500 truncate">{RIDER[r.num].team}</div></div>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500"><span className="truncate">{RIDER[r.num].team}</span>{r.tyre && <Tyre t={r.tyre} />}</div></div>
           <div className="text-right"><div className="tabular-nums text-sm text-slate-100">{target === 'POLE' ? fmtLap(r.T) : (i === 0 ? fmtTime(r.T) : fmtGap(r.gap))}</div>
             {!known && <Conf v={r.conf} />}
             {prev && !known && d !== 0 && <div className={'text-[10px] font-bold ' + (d > 0 ? 'text-emerald-400' : 'text-red-400')}>{d > 0 ? '▲ +' + d : '▼ ' + d} vs hito ant.</div>}
@@ -220,7 +234,7 @@ function Telemetria({ snap, M, sel, view, sid }) {
     if (ideS === 'ALL') return { sec: a.sec, ideal: a.ideal, best: a.best, margin: a.margin, n: a.cnt.total, clean: a.cnt.clean, ex: 0, off: null, flagged: [], OUT: a.cnt.OUT, IN: a.cnt.IN, ANU: a.cnt.ANU, LENTA: a.cnt.LENTA };
     const b = a.bySession[ideS], cl = CLS[ideS][n] || [], c = k => cl.filter(l => l.why === k).length;
     const ideal = b.sec.every(isFinite) ? b.ideal : NaN;
-    return { sec: b.sec, ideal, best: b.best, margin: isFinite(ideal) && isFinite(b.best) ? Math.max(0, b.best - ideal) : NaN, n: b.n, clean: b.clean, ex: b.excluded, off: b.official ? b.official.it : null, flagged: b.flagged, OUT: c('OUT'), IN: c('IN'), ANU: c('ANU'), LENTA: c('LENTA') };
+    return { sec: b.sec, ideal, best: b.best, tyre: b.bestTyre, margin: isFinite(ideal) && isFinite(b.best) ? Math.max(0, b.best - ideal) : NaN, n: b.n, clean: b.clean, ex: b.excluded, off: b.official ? b.official.it : null, flagged: b.flagged, OUT: c('OUT'), IN: c('IN'), ANU: c('ANU'), LENTA: c('LENTA') };
   };
   const rowsAll = NUMS.map(n => [n, rowOf(n)]), rowMap = Object.fromEntries(rowsAll);
   const secBest = [0, 1, 2, 3].map(k => Math.min(...rowsAll.map(([n, r]) => r.sec[k])));
@@ -253,14 +267,14 @@ function Telemetria({ snap, M, sel, view, sid }) {
         <div><div className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">Margen real − ideal ({ideTag})</div>{order.length ? <ChartCanvas type="bar" data={idData} options={idOpts} height={260} /> : <Empty />}</div>
       </div>
       <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums">
-        <thead><tr className="text-left text-slate-500 border-b border-[#1f2630]"><th className="py-1.5 pr-3">Piloto</th>{SECN.map(s => <th key={s} className="pr-3">{s}</th>)}<th className="pr-3">Ideal</th>{hasOff && <th className="pr-3" title="Best Partial Times (PDF oficial)">IT oficial</th>}<th className="pr-3">Mejor real</th><th className="pr-3">Margen</th><th className="pr-3">Vueltas</th><th className="pr-3">Válidas</th><th className="pr-3">Out</th><th className="pr-3">In</th><th className="pr-3">Anul.</th><th>&gt;107%</th></tr></thead>
+        <thead><tr className="text-left text-slate-500 border-b border-[#1f2630]"><th className="py-1.5 pr-3">Piloto</th>{SECN.map(s => <th key={s} className="pr-3">{s}</th>)}<th className="pr-3">Ideal</th>{hasOff && <th className="pr-3" title="Best Partial Times (PDF oficial)">IT oficial</th>}<th className="pr-3">Mejor real</th><th className="pr-3" title="Neumático delantero / trasero de la mejor vuelta">Neum. D/T</th><th className="pr-3">Margen</th><th className="pr-3">Vueltas</th><th className="pr-3">Válidas</th><th className="pr-3">Out</th><th className="pr-3">In</th><th className="pr-3">Anul.</th><th>&gt;107%</th></tr></thead>
         <tbody>{order.map(n => { const r = rowMap[n]; return r.ex > 0
-          ? <tr key={n} className="border-b border-[#161c25] opacity-60"><td className="py-1.5 pr-3 whitespace-nowrap"><Dot n={n} /> <span className="ml-1 text-slate-300">{mm(n)}</span></td><td colSpan={11} className="text-amber-300/80">No se tiene en cuenta: solo {r.ex} {r.ex === 1 ? 'vuelta' : 'vueltas'} en {ideTag} (≤ 4)</td></tr>
+          ? <tr key={n} className="border-b border-[#161c25] opacity-60"><td className="py-1.5 pr-3 whitespace-nowrap"><Dot n={n} /> <span className="ml-1 text-slate-300">{mm(n)}</span></td><td colSpan={12} className="text-amber-300/80">No se tiene en cuenta: solo {r.ex} {r.ex === 1 ? 'vuelta' : 'vueltas'} en {ideTag} (≤ 4)</td></tr>
           : <tr key={n} className="border-b border-[#161c25] hover:bg-[#141a22]">
             <td className="py-1.5 pr-3 whitespace-nowrap"><Dot n={n} /> <span className="ml-1 text-slate-200">{mm(n)}</span></td>
             {r.sec.map((v, k) => <td key={k} title={(r.flagged || []).includes(k) ? 'El parcial oficial salió de una out/in-lap o vuelta anulada: se usa el mejor parcial de vuelta limpia' : ''} className={'pr-3 ' + (v === secBest[k] ? 'text-fuchsia-400 font-bold' : 'text-slate-300') + ((r.flagged || []).includes(k) ? ' underline decoration-dotted decoration-amber-400' : '')}>{isFinite(v) ? v.toFixed(3) : '—'}</td>)}
             <td className="pr-3 text-amber-300 font-bold">{fmtLap(r.ideal)}</td>
-            {hasOff && <td className="pr-3 text-slate-400">{r.off ? fmtLap(r.off) : '—'}{r.off && Math.abs(r.ideal - r.off) > 0.0015 && <span className="text-amber-300"> +{(r.ideal - r.off).toFixed(3)}</span>}</td>}<td className="pr-3 text-slate-200">{fmtLap(r.best)}</td><td className="pr-3 text-slate-400">{isFinite(r.margin) ? '+' + r.margin.toFixed(3) : '—'}</td>
+            {hasOff && <td className="pr-3 text-slate-400">{r.off ? fmtLap(r.off) : '—'}{r.off && Math.abs(r.ideal - r.off) > 0.0015 && <span className="text-amber-300"> +{(r.ideal - r.off).toFixed(3)}</span>}</td>}<td className="pr-3 text-slate-200">{fmtLap(r.best)}</td><td className="pr-3"><Tyre t={r.tyre} /></td><td className="pr-3 text-slate-400">{isFinite(r.margin) ? '+' + r.margin.toFixed(3) : '—'}</td>
             <td className="pr-3 text-slate-400">{r.n}</td><td className="pr-3 text-emerald-400">{r.clean}</td><td className="pr-3 text-slate-500">{r.OUT}</td><td className="pr-3 text-slate-500">{r.IN}</td><td className="pr-3 text-red-400">{r.ANU}</td><td className="text-slate-500">{r.LENTA}</td></tr>; })}</tbody>
       </table></div>
       {!order.length && <Empty />}
@@ -362,9 +376,16 @@ function Ritmo({ snap, M, sel, target, setTarget }) {
   const sel2 = rows.filter(r => sel.includes(r.num));
   const gapData = useMemo(() => ({ labels: sel2.map(r => mm(r.num)), datasets: [{ label: 'Gap predicho al ganador (s)', data: sel2.map(r => +(r.gap || 0).toFixed(3)), backgroundColor: sel2.map(r => RIDER[r.num].color) }] }), [snap, target, sel]);
   const gapOpts = useMemo(() => ({ indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: axisT(target === 'POLE' ? 'Δ a la pole (s)' : 'Δ al ganador (s)') } }), [target]);
-  const degRows = target === 'POLE' ? [] : sel2.filter(r => r.deg != null);
-  const degData = useMemo(() => ({ labels: degRows.map(r => mm(r.num)), datasets: [{ label: 'Degradación proyectada (s/vuelta)', data: degRows.map(r => +(r.deg).toFixed(4)), backgroundColor: degRows.map(r => RIDER[r.num].color) }] }), [snap, target, sel]);
-  const degOpts = useMemo(() => ({ plugins: { legend: { display: false } }, scales: { y: axisT('s/vuelta') } }), []);
+  // once the result exists (real, or simulated) the chart puts the projection of the last photo before it next to the degradation measured in that race
+  const predSnap = known ? (target === 'SPR' ? SNAP.SAT : target === 'RAC' ? SNAP.SPR : null) : null;
+  const predDeg = predSnap ? Object.fromEntries(tgtRows(predSnap, target).rows.map(r => [r.num, r.deg])) : null;
+  const realSimTgt = known && !SD[{ SPR: 'SPR', RAC: 'RAC' }[target] || 'Q2'].real;
+  const degRows = target === 'POLE' ? [] : sel2.filter(r => r.deg != null || (predDeg && predDeg[r.num] != null));
+  const degData = useMemo(() => ({ labels: degRows.map(r => mm(r.num)), datasets: known && predDeg
+    ? [{ label: 'Proyectada (foto previa al resultado)', data: degRows.map(r => predDeg[r.num] != null ? +predDeg[r.num].toFixed(4) : null), backgroundColor: '#64748b' },
+       { label: 'Real' + (realSimTgt ? ' (simulada)' : ''), data: degRows.map(r => r.deg != null ? +r.deg.toFixed(4) : null), backgroundColor: '#ef4444' }]
+    : [{ label: 'Degradación proyectada (s/vuelta)', data: degRows.map(r => +(r.deg).toFixed(4)), backgroundColor: degRows.map(r => RIDER[r.num].color) }] }), [snap, target, sel]);
+  const degOpts = useMemo(() => ({ plugins: { legend: { display: known && !!predDeg, position: 'bottom' } }, scales: { y: axisT('s/vuelta') } }), [known, target]);
 
   const desc = { POLE: 'Mejor vuelta normalizada − 0,4·margen vs ideal + 0,35·σ(3 mejores) + penalización por pocas vueltas.',
     SPR: 'Mediana de la mejor tanda corta (5-8 vtas, normalizada a Medium) + σ + degradación proyectada ×' + DATA.circuit.sprintLaps + ' vueltas + parrilla (oficial si hay Grid.pdf) y punta + prior leve por clasificación del Mundial 2025 (' + PRIOR_WC + ' s/vta por puesto).',
@@ -373,11 +394,11 @@ function Ritmo({ snap, M, sel, target, setTarget }) {
     <Panel title="Simulación" sess={'objetivo ' + TLBL[target]} right={<div className="flex gap-1.5">{TARGETS.map(([t, l]) => <Chip key={t} active={t === target} onClick={() => setTarget(t)}>{l}</Chip>)}</div>}>
       <p className="text-xs text-slate-400 mb-3 leading-relaxed"><b className="text-slate-200">Modelo:</b> {desc} {known && <span className="text-emerald-400 font-semibold"> · Este objetivo ya es resultado real (simulado) en este hito.</span>}</p>
       <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums">
-        <thead><tr className="text-left text-slate-500 border-b border-[#1f2630]">{th('pos', 'Pos')}{th('name', 'Piloto')}{th('T', target === 'POLE' ? 'Vuelta proy.' : 'Tiempo')}{th('gap', 'Gap')}
+        <thead><tr className="text-left text-slate-500 border-b border-[#1f2630]">{th('pos', 'Pos')}{th('name', 'Piloto')}<th className="pr-3 py-1.5" title="Neumático delantero / trasero de la tanda (o vuelta) que sustenta el ritmo">Neum. D/T</th>{th('T', target === 'POLE' ? 'Vuelta proy.' : 'Tiempo')}{th('gap', 'Gap')}
           {target !== 'POLE' && <>{th('pace', 'Ritmo s/vta')}{th('sd', 'σ')}{th('deg', 'Degr.')}{th('grid', 'Parr.')}</>}{th('ideal', 'Ideal')}{th('best', 'Mejor')}{th('vmax', 'V.max')}{!known && th('conf', 'Conf.')}</tr></thead>
         <tbody>{sorted.map(r => <tr key={r.num} className={'border-b border-[#161c25] hover:bg-[#141a22] ' + (sel.includes(r.num) ? 'bg-[#131922]' : '')}>
           <td className="py-1.5 pr-3 font-bold text-slate-300">{r.pos}</td>
-          <td className="pr-3 whitespace-nowrap"><Dot n={r.num} /> <span className="ml-1 text-slate-100">{r.name}</span> <span className="text-slate-600">#{r.num}</span>{r.status === 'DNF' && <span className="ml-1 text-red-400 font-bold">DNF</span>}</td>
+          <td className="pr-3 whitespace-nowrap"><Dot n={r.num} /> <span className="ml-1 text-slate-100">{r.name}</span> <span className="text-slate-600">#{r.num}</span>{r.status === 'DNF' && <span className="ml-1 text-red-400 font-bold">DNF</span>}</td><td className="pr-3"><Tyre t={r.tyre} /></td>
           <td className="pr-3 text-slate-100">{r.T != null ? (target === 'POLE' ? fmtLap(r.T) : fmtTime(r.T)) : '—'}</td><td className="pr-3 text-slate-400">{r.gap != null ? fmtGap(r.gap) : (r.T != null && target === 'POLE' ? fmtGap(r.T - rows[0].T) : '—')}</td>
           {target !== 'POLE' && <><td className="pr-3">{r.pace ? fmtTime(r.pace) : '—'}</td><td className="pr-3 text-slate-400">{r.sd != null ? r.sd.toFixed(3) : '—'}</td><td className="pr-3 text-slate-400">{r.deg != null ? r.deg.toFixed(3) : '—'}</td><td className="pr-3 text-slate-400">{r.grid || '—'}</td></>}
           <td className="pr-3 text-amber-300">{fmtLap(r.ideal)}</td><td className="pr-3">{fmtLap(r.best)}</td><td className="pr-3 text-slate-400">{r.vmax ? r.vmax.toFixed(1) : '—'}</td>
@@ -389,7 +410,7 @@ function Ritmo({ snap, M, sel, target, setTarget }) {
       <Panel title="Tandas reales y degradación (pilotos seleccionados)">{sel.length ? <ChartCanvas type="scatter" data={stData} options={stOpts} height={320} /> : <Empty />}</Panel>
       <div className="space-y-4">
         <Panel title="Gap predicho (seleccionados)" sess={'objetivo ' + TLBL[target]}>{sel2.length ? <ChartCanvas type="bar" data={gapData} options={gapOpts} height={150 + sel2.length * 12} /> : <Empty />}</Panel>
-        {target !== 'POLE' && <Panel title="Degradación proyectada" sess={'objetivo ' + TLBL[target]}>{degRows.length ? <ChartCanvas type="bar" data={degData} options={degOpts} height={170} /> : <Empty />}</Panel>}
+        {target !== 'POLE' && <Panel title={known && predDeg ? 'Degradación: proyectada vs real' : 'Degradación proyectada'} sess={'objetivo ' + TLBL[target]}>{degRows.length ? <ChartCanvas type="bar" data={degData} options={degOpts} height={170} /> : <Empty />}</Panel>}
       </div>
     </div>
   </div>;
@@ -408,7 +429,7 @@ function TopChips({ top, ref3 }) {
   return <div className="flex flex-wrap gap-1">{top.map((n, i) => {
     const hit = ref3 ? (ref3[i] === n ? 'exact' : ref3.includes(n) ? 'set' : 'miss') : null;
     const cls = hit === 'exact' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' : hit === 'set' ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' : hit === 'miss' ? 'bg-red-500/10 text-red-300 border-red-500/30' : 'bg-[#161c25] text-slate-200 border-[#2a313c]';
-    return <span key={n} className={'text-[11px] font-semibold px-1.5 py-0.5 rounded border ' + cls}>{i + 1}. {mm(n)}</span>;
+    return <span key={n} className={'text-[11px] font-semibold pl-0.5 pr-1.5 py-0.5 rounded border inline-flex items-center gap-1 ' + cls}><Avatar n={n} size={20} />{i + 1}. {mm(n)}</span>;
   })}</div>;
 }
 function Precision({ M, sel, view }) {

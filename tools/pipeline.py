@@ -30,6 +30,7 @@ PDF_OVERRIDE = os.environ.get('MOTOGP_PDF_DIR')            # test hook: replaces
 SESSION_DIRS = ['FP1', 'PR', 'FP2', 'Q1', 'Q2', 'SPRINT', 'RACE']      # inner folders prepared for every circuit
 # One entry per circuit folder in the project root. Lap counts are only the defaults used while the Sprint/Race are simulated
 # (a real Sprint/Race replaces them); lengths are the published track lengths. `salt` varies the seeded simulation per circuit.
+VERSION = '0.6.0'                                          # keep in step with CHANGELOG.md
 CIRCUITS = [
     {'id': 'malasya', 'folder': 'MALASYA', 'flag': '🇲🇾', 'short': 'Sepang', 'name': 'Petronas Sepang International Circuit', 'gp': 'Gran Premio de Malasia',
      'length': 5.543, 'sprintLaps': 10, 'raceLaps': 20, 'record': {'t': 116.337, 'who': 'F. Bagnaia', 'year': 2024}, 'weather': None, 'salt': 0, 'api': 'MAL',
@@ -49,6 +50,38 @@ CIRCUITS = [
 ]
 DEFAULT_CIRCUIT = 'malasya'
 def circuit_dir(c): return Path(PDF_OVERRIDE) if PDF_OVERRIDE and c is CIRCUITS[0] else ROOT / c['folder']
+
+# ---- data fetched from the public motogp.com API by tools/descargar.py (API/*.json): standings, rider statistics, circuit history
+API_DIR = ROOT / 'API'
+def _jl(name):
+    try: return json.loads((API_DIR / name).read_text(encoding='utf8'))
+    except Exception: return None
+
+def api_bundle():
+    return {'estado': _jl('estado.json') or {}, 'temporada': _jl('temporada.json'), 'pilotos': _jl('pilotos.json') or {}}
+
+def api_history(circ):
+    return _jl(f'circuito_{circ["api"]}.json') if circ.get('api') else None
+
+def hist_laps(hist, sid):
+    """Race distance (laps) most often seen in the last editions of the GP; None without history."""
+    v = [e['laps'][sid] for e in (hist or {}).get('editions', [])[:4] if (e.get('laps') or {}).get(sid)]
+    return max(set(v), key=v.count) if v else None
+
+def lap_secs(t):
+    m = re.fullmatch(r"(\d+):(\d+\.\d+)", t or '')
+    return int(m.group(1)) * 60 + float(m.group(2)) if m else None
+
+def short_name(full):
+    parts = (full or '').split()
+    return f'{parts[0][0]}. {" ".join(parts[1:])}' if len(parts) > 1 else full
+
+def event_start(circ, A):
+    """Start date (ISO) of this circuit's GP in the current season: evento.json first, then the API calendar."""
+    try: return json.loads((circuit_dir(circ) / 'evento.json').read_text(encoding='utf8'))['date_start']
+    except Exception: pass
+    cal = (A.get('temporada') or {}).get('calendar') or []
+    return next((e['start'] for e in cal if e['code'] == circ.get('api')), None)
 def ensure_folders():
     """Prepare <CIRCUITO>/<sesión>/ (empty) for every circuit so the user only has to drop the PDFs in."""
     for c in CIRCUITS:
@@ -150,7 +183,7 @@ def sections(path):
 def scan_pdfs(pdf_dir):
     """-> {sid: {kind: section}} . Standalone files beat the "Session" bundle; newer beats older."""
     cand = {}
-    for p in sorted(pdf_dir.rglob('*.pdf'), key=lambda p: p.stat().st_mtime):
+    for p in sorted((p for p in pdf_dir.rglob('*.pdf') if 'CAMPEONATO' not in p.parts), key=lambda p: p.stat().st_mtime):      # CAMPEONATO/ only archives the championship reports
         secs = sections(p)
         if not secs: log('  · ignorado:', p.relative_to(pdf_dir)); continue
         for s in secs:
@@ -309,7 +342,8 @@ def parse_avgspd(txt):
 def parse_fast(txt):
     out = []
     for ln in txt.split('\n'):
-        m = re.match(r"^(\d+'\d+\.\d{3})\s+(\d+)\s+.+?\s+(%s)\s+(%s)\s+(\d+'\d+\.\d{3})\s+(\d+\.\d)\s+(\d+)\s*$" % (NATS, BIKES), ln.strip())
+        # practice rows start with the session time; Sprint/Race rows start with the race lap and then the race time ("2 4'01.318 73 Alex MARQUEZ ...")
+        m = re.match(r"^(?:\d+\s+)?(\d+'\d+\.\d{3})\s+(\d+)\s+.+?\s+(%s)\s+(%s)\s+(\d+'\d+\.\d{3})\s+(\d+\.\d)\s+(\d+)\s*$" % (NATS, BIKES), ln.strip())
         if m: out.append({'at': t2s(m.group(1)), 'num': int(m.group(2)), 't': t2s(m.group(5)), 'kmh': float(m.group(6)), 'lap': int(m.group(7))})
     return out
 
@@ -844,8 +878,9 @@ def build_circuit(circ):
         grids[gs] = g
     absent = [n for n in nums if grids and not any(n in g['order'] for g in grids.values())]
     if absent: log('  No toman la salida: ' + ', '.join(f'#{n}' for n in absent))
-    sprl = real_sessions['SPR']['nlaps'] if 'SPR' in real_sessions else (grids.get('SPR', {}).get('laps') or circ['sprintLaps'])
-    racl = real_sessions['RAC']['nlaps'] if 'RAC' in real_sessions else (grids.get('RAC', {}).get('laps') or circ['raceLaps'])
+    A = api_bundle(); hist = api_history(circ)
+    sprl = real_sessions['SPR']['nlaps'] if 'SPR' in real_sessions else (grids.get('SPR', {}).get('laps') or hist_laps(hist, 'SPR') or circ['sprintLaps'])
+    racl = real_sessions['RAC']['nlaps'] if 'RAC' in real_sessions else (grids.get('RAC', {}).get('laps') or hist_laps(hist, 'RAC') or circ['raceLaps'])
     sim = Sim(nums, fri, circ['salt'])
     sim_q1, sim_q2 = sim.quali()
     def sim_grid(gs):
@@ -884,6 +919,18 @@ def build_circuit(circ):
         if e.get('replaces'): r['replaces'] = e['replaces']; r['replacesName'] = (ent.get(e['replaces']) or {}).get('surname', '#%d' % e['replaces'])
         if b: r['bio'] = b
     event['outOfEvent'] = {str(n): (ent.get(n) or {}).get('surname') for n in subs}
+    code, start = circ.get('api'), event_start(circ, A)
+    pts = {}
+    for r in riders:                                                         # championship points BEFORE this GP (the weekend being analysed must not leak into its own prior)
+        a = A['pilotos'].get(str(r['num']))
+        if a and start: pts[r['num']] = sum((e.get('pts') or 0) for e in a['events'] if e['y'] == int(start[:4]) and e['d'] and e['d'] < start[:10])
+    order = sorted(pts, key=lambda n: -pts[n])
+    for r in riders:
+        a = A['pilotos'].get(str(r['num']))
+        if not a: continue
+        r['api'] = {'season': a.get('season'), 'career': a.get('career_motogp') or a.get('career'),
+                    'circ': [{k: e.get(k) for k in ('y', 'q', 's', 'r', 'rp', 'rt')} for e in a['events'] if e['c'] == code and (not start or e['d'] < start[:10])],
+                    'form': {'pts': pts[r['num']], 'pos': order.index(r['num']) + 1, 'n': sum(1 for e in a['events'] if start and e['y'] == int(start[:4]) and e['d'] < start[:10])} if r['num'] in pts else None}
     cinfo = {k: circ[k] for k in ('id', 'folder', 'flag', 'short', 'name', 'gp', 'length', 'record', 'weather')}
     if 'circuit' in event:
         ci = event['circuit']; cinfo['info'] = ci['info']; cinfo['records'] = ci['records']; cinfo['y25'] = ci['y25']
@@ -897,6 +944,12 @@ def build_circuit(circ):
             rs = next((x for x in json.loads(evf.read_text(encoding='utf8')).get('sessions', []) if x.get('sid') == 'RAC'), None)
             if rs: cinfo['raceDate'], cinfo['raceHour'] = rs['date'][:10], int(rs['date'][11:13])
         except Exception as e: log(f'  ! evento.json ilegible: {e}')
+    if hist:
+        cinfo['hist'] = hist
+        if not cinfo.get('record') and hist.get('record') and lap_secs(hist['record']['time']):
+            cinfo['record'] = {'t': lap_secs(hist['record']['time']), 'who': short_name(hist['record']['name']), 'year': hist['record'].get('year')}
+    est = A['estado'] or {}
+    cinfo['apiUpdated'] = {'all': est.get('actualizado'), 'circuit': (est.get('circuitos') or {}).get(circ['id'])}
     cinfo.update(sprintLaps=sprl, raceLaps=racl, lapsEstimated={'SPR': 'SPR' not in real_sessions and 'SPR' not in grids, 'RAC': 'RAC' not in real_sessions and 'RAC' not in grids})
     wsid = next((x for x in reversed(SIDS) if x in real_sessions and real_sessions[x]['official'].get('cond')), None)      # header weather = latest real session
     if wsid: c_ = real_sessions[wsid]['official']['cond']; cinfo['weather'] = {'air': c_.get('air'), 'hum': c_.get('hum'), 'ground': c_.get('ground'), 'cond': c_.get('cond'), 'sid': wsid}
@@ -919,11 +972,20 @@ def build_data(cid=DEFAULT_CIRCUIT):
 def build_all():
     """-> {'default', 'circuits': [{...circuit card, 'ready', 'found', 'missing'}], 'data': {id: DATA | None}}"""
     ensure_folders()
-    out = {'default': DEFAULT_CIRCUIT, 'circuits': [], 'data': {}}
+    est = _jl('estado.json') or {}
+    out = {'version': VERSION, 'default': DEFAULT_CIRCUIT, 'circuits': [], 'data': {}, 'api': {'updated': est.get('actualizado'), 'summary': est.get('resumen')}}
     for c in CIRCUITS:
         d, info = build_circuit(c)
         card = {k: c[k] for k in ('id', 'folder', 'flag', 'short', 'name', 'gp', 'length')}
         card.update(ready=d is not None, found=info['found'], missing=info.get('missing', []))
+        h = api_history(c)
+        if h and d is None:                                                  # pending circuits still show what the API knows: record, past winners, conditions
+            card['hist'] = h; rec = h.get('record')
+            card['record'] = {'t': lap_secs(rec['time']), 'who': short_name(rec['name']), 'year': rec.get('year')} if rec and lap_secs(rec['time']) else c.get('record')
+            card['sprintLaps'], card['raceLaps'] = hist_laps(h, 'SPR') or c['sprintLaps'], hist_laps(h, 'RAC') or c['raceLaps']
+            ev = next((e for e in ((_jl('temporada.json') or {}).get('calendar') or []) if e['code'] == c.get('api')), None)
+            if ev: card['start'], card['end'] = ev['start'][:10], ev['end'][:10]
+        card['apiUpdated'] = ((_jl('estado.json') or {}).get('circuitos') or {}).get(c['id'])
         out['circuits'].append(card); out['data'][c['id']] = d
     return out
 

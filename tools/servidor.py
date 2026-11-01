@@ -2,7 +2,8 @@
 
     python tools/servidor.py          ->  http://localhost:8000
 
-El panel muestra (solo con este servidor) el boton «PDF motogp.com», que llama a tools/descargar.py para bajar los informes nuevos.
+El panel muestra (solo con este servidor) el boton «Recuperar resultados MotoGP»: llama a tools/descargar.py para bajar los PDF nuevos y los datos de la API
+publica (Mundial, estadisticas de pilotos, historico del circuito) y deja la fecha de la ultima actualizacion en API/estado.json.
 """
 import http.server, importlib, json, socketserver, sys, threading
 from urllib.parse import parse_qs, urlparse
@@ -17,7 +18,7 @@ LOCK = threading.Lock()
 CACHE = {'sig': None, 'html': b'', 'error': None}
 
 def signature():
-    files = pipeline.all_pdfs() + [c_dir / 'evento.json' for c_dir in (pipeline.circuit_dir(c) for c in pipeline.CIRCUITS)] + [pipeline.TOOLS / n for n in ('engine.js', 'ui.jsx', 'shell.jsx', 'template.html', 'pipeline.py')] + list(pipeline.PHOTO_DIR.glob('*.webp'))
+    files = pipeline.all_pdfs() + list(pipeline.API_DIR.glob('*.json')) + [c_dir / 'evento.json' for c_dir in (pipeline.circuit_dir(c) for c in pipeline.CIRCUITS)] + [pipeline.TOOLS / n for n in ('engine.js', 'ui.jsx', 'shell.jsx', 'template.html', 'pipeline.py')] + list(pipeline.PHOTO_DIR.glob('*.webp'))
     return tuple(sorted((str(p), p.stat().st_mtime_ns) for p in files if p.exists()))
 
 def current_html():
@@ -40,13 +41,15 @@ def current_html():
 
 DL_LOCK = threading.Lock()
 
-def run_download(circuit):
-    """POST /api/descargar?circuito=<id>: baja de motogp.com los PDF que falten o hayan cambiado (tools/descargar.py) y devuelve el resumen."""
+def run_download(circuit, datos=True):
+    """POST /api/recuperar?circuito=<id>: baja de motogp.com los PDF que falten o hayan cambiado y los datos de la API (tools/descargar.py) y devuelve el resumen."""
     import descargar
+    importlib.reload(descargar)                       # edits to descargar.py apply without restarting the server
     lines = []
     with DL_LOCK:
-        r = descargar.run([circuit] if circuit else None, active_only=False, log=lambda *a: lines.append(' '.join(str(x) for x in a)))
+        r = descargar.recuperar([circuit] if circuit else None, active_only=False, datos=datos, log=lambda *a: lines.append(' '.join(str(x) for x in a)))
     r['log'] = lines
+    r['actualizado'] = (descargar.jload(descargar.API_DIR / 'estado.json', {}) or {}).get('actualizado')
     return r
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -56,9 +59,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
     def do_POST(self):
         u = urlparse(self.path)
-        if u.path == '/api/descargar':
-            try: self.send_json(run_download((parse_qs(u.query).get('circuito') or [None])[0]))
-            except BaseException as e: self.send_json({'nuevos': [], 'actualizados': [], 'iguales': 0, 'avisos': [], 'errores': [str(e)], 'log': []}, 200)
+        if u.path in ('/api/descargar', '/api/recuperar'):
+            try: self.send_json(run_download((parse_qs(u.query).get('circuito') or [None])[0], datos=u.path == '/api/recuperar'))
+            except BaseException as e: self.send_json({'nuevos': [], 'actualizados': [], 'iguales': 0, 'avisos': [], 'errores': [str(e)], 'eventos': [], 'datos': None, 'log': []}, 200)
         else: self.send_error(404)
     def do_GET(self):
         if self.path.split('?')[0] == '/api/estado': self.send_json({'servidor': True, 'descarga': True}); return

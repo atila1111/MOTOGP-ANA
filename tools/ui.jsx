@@ -168,6 +168,35 @@ function CircuitCard({ M }) {
   </Panel>;
 }
 
+/* ---------- API motogp.com: histórico del circuito y palmarés de los pilotos ---------- */
+function HistoricoPanel() {
+  const h = DATA.circuit.hist;
+  if (!h) return null;
+  return <Panel title="Histórico del circuito" sess="API motogp.com" right={<span className="text-[11px] text-slate-500">{h.editions.length} ediciones</span>}><HistoricoTable hist={h} /></Panel>;
+}
+function PalmaresPanel({ M, sel }) {
+  const rows = useMemo(() => NUMS.filter(n => RIDER[n].api).map(n => {
+    const a = RIDER[n].api, circ = (a.circ || []).filter(e => e.r != null || e.s != null), races = circ.filter(e => e.r != null);
+    const pos = races.map(e => e.r);
+    return { n, form: a.form, season: a.season, circ, races, best: pos.length ? Math.min(...pos) : null, avg: pos.length ? pos.reduce((x, y) => x + y, 0) / pos.length : null };
+  }).sort((a, b) => (a.avg == null) - (b.avg == null) || a.avg - b.avg || (a.form ? a.form.pos : 99) - (b.form ? b.form.pos : 99)), [M.id]);
+  if (!rows.length) return null;
+  const th = (l, t) => <th className="pr-3 py-1.5" title={t}>{l}</th>;
+  return <Panel title="Palmarés en este circuito y forma 2026" sess="API motogp.com" right={<span className="text-[11px] text-slate-500">MotoGP · resultados de carrera por año · forma = puesto y puntos antes de este GP</span>}>
+    <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums">
+      <thead><tr className="text-left text-[10px] uppercase tracking-wider text-slate-500">{th('Piloto')}{th('Forma 2026', 'Puesto en el Mundial y puntos antes de este GP')}{th('Pts/GP', 'Puntos por GP antes de este')}{th('Carreras aquí', 'Carreras MotoGP disputadas en este circuito')}{th('Mejor', 'Mejor posición en carrera')}{th('Media', 'Posición media en carrera aquí (solo si terminó)')}{th('Por año (carrera · sprint)', 'Año: posición de carrera / sprint; — = no terminó o no participó')}</tr></thead>
+      <tbody>{rows.map(r => <tr key={r.n} className={'border-t border-[#1a2029] ' + (sel.includes(r.n) ? 'bg-white/[0.03]' : '')}>
+        <td className="pr-3 py-1"><span className="inline-flex items-center gap-1.5"><Avatar n={r.n} size={22} /><span className="text-slate-200 font-semibold">{mm(r.n)}</span></span></td>
+        <td className="pr-3 text-slate-300">{r.form ? <>{r.form.pos}º <span className="text-slate-500">{r.form.pts} pts</span></> : '—'}</td>
+        <td className="pr-3 text-slate-400">{r.form && r.form.n ? (r.form.pts / r.form.n).toFixed(1) : '—'}</td>
+        <td className="pr-3 text-slate-400">{r.circ.length || '—'}</td>
+        <td className={'pr-3 font-bold ' + (r.best === 1 ? 'text-amber-300' : r.best && r.best <= 3 ? 'text-emerald-300' : 'text-slate-300')}>{r.best != null ? r.best + 'º' : '—'}</td>
+        <td className="pr-3 text-slate-300">{r.avg != null ? r.avg.toFixed(1) : '—'}</td>
+        <td className="text-slate-400">{r.circ.length ? r.circ.map(e => <span key={e.y} className="mr-2 whitespace-nowrap"><span className="text-slate-600">{String(e.y).slice(2)}</span> {e.r != null ? e.r : '—'}<span className="text-slate-600">·</span>{e.s != null ? e.s : '—'}</span>) : <span className="text-slate-600">primera vez en este trazado en MotoGP</span>}</td></tr>)}</tbody></table></div>
+    <p className="text-[11px] text-slate-500 mt-2">Es información de contexto: de momento no entra en la predicción (en la Sprint y la Carrera de Malasia el puesto en el Mundial mejora el acierto, pero con una sola carrera no hay base para cambiar el modelo).</p>
+  </Panel>;
+}
+
 /* ---------- TAB: Resumen ---------- */
 function Resumen({ snap, prev, M, sel, goPace, goSim }) {
   const A = snap.A;
@@ -190,6 +219,8 @@ function Resumen({ snap, prev, M, sel, goPace, goSim }) {
       {TARGETS.map(([t]) => <PodiumCard key={t} target={t} snap={snap} prev={prev} onOpen={() => goPace(t)} />)}
     </div>
     <CircuitCard M={M} />
+    <HistoricoPanel />
+    <PalmaresPanel M={M} sel={sel} />
     <DocsPanel M={M} />
   </div>;
 }
@@ -598,6 +629,10 @@ function Simulador({ M, sel }) {
   const posOpts = useMemo(() => ({ plugins: { legend: { position: 'bottom' } }, scales: { x: axisT('vuelta'), y: Object.assign({ reverse: true, min: 1, ticks: { precision: 0 } }, axisT('posición')) } }), []);
   const probOpts = useMemo(() => ({ plugins: { legend: { position: 'bottom' } }, scales: { y: Object.assign({ min: 0, max: 100 }, axisT('%')) } }), []);
   const rain = draft.rain;
+  const hEds = (c.hist && c.hist.editions || []).filter(e => e.cond && e.cond.RAC && e.cond.RAC.track === 'Dry' && e.cond.RAC.ground);
+  const hAvg = k => hEds.length ? Math.round(hEds.reduce((a, e) => a + (e.cond.RAC[k] || 0), 0) / hEds.length) : null;
+  const hLap = hEds.map(e => { const w = e.race && e.race.podium && e.race.podium[0], m = w && /^(\d+):(\d+\.\d+)$/.exec(w.time || ''); return m && e.laps.RAC ? (+m[1] * 60 + +m[2]) / e.laps.RAC : null; }).filter(Boolean);
+  const hLapAvg = hLap.length ? hLap.reduce((a, b) => a + b, 0) / hLap.length : null;
   return <div className="space-y-4">
     {SD.RAC.real && <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">La Carrera ya es REAL: este simulador responde a «¿qué habría pasado con otra pista o meteo?» partiendo de la predicción previa a la carrera.</div>}
     <Panel title="Parámetros de pista y carrera" sess={tag} right={<div className="flex gap-1.5"><Chip onClick={() => run()} active={dirty}>{dirty ? 'Simular (hay cambios)' : 'Simular'}</Chip><Chip onClick={() => run(Math.floor(Math.random() * 1e6))}>Otra semilla</Chip></div>}>
@@ -612,8 +647,10 @@ function Simulador({ M, sel }) {
           <div><div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Estado de pista esperado</div>
             <div className="flex flex-wrap gap-4">{fld('ground', 'Pista °C')}{fld('air', 'Aire °C')}{fld('hum', 'Humedad %')}</div>
             <div className="flex flex-wrap gap-1.5 mt-2">{['SPR', 'Q2', 'FP2', 'PR'].filter(x => SD[x].real && SD[x].official && SD[x].official.cond).map(x => <Chip key={x} onClick={() => setDraft(d => Object.assign({}, d, { ground: SD[x].official.cond.ground, air: SD[x].official.cond.air, hum: SD[x].official.cond.hum }))}>{`Como ${SESS[x].label} (${SD[x].official.cond.ground}°)`}</Chip>)}
+              {hEds.length > 0 && <Chip onClick={() => setDraft(d => Object.assign({}, d, { ground: hAvg('ground'), air: hAvg('air'), hum: hAvg('hum') }))} title="Media de las carreras en seco de las últimas ediciones (API motogp.com)">{`Media histórica (pista ${hAvg('ground')}°)`}</Chip>}
               {fc && <Chip onClick={() => setDraft(d => Object.assign({}, d, { ground: fc.ground, air: fc.air, hum: fc.hum, rain: fc.rain }))} title={fc.src}>Previsión Met Office (aire {fc.air}°)</Chip>}</div>
-            <p className="text-[11px] text-slate-500 mt-2">El ritmo de partida se midió con pista a <b className="text-slate-300">{ref.ground}°</b>{ref.sid ? ` (${SESS[ref.sid].label} real)` : ''}. Cada °C de diferencia cambia el ritmo {draft.kPace} s/vta y la degradación un {Math.round(100 * draft.kDeg)}%.</p></div>
+            <p className="text-[11px] text-slate-500 mt-2">El ritmo de partida se midió con pista a <b className="text-slate-300">{ref.ground}°</b>{ref.sid ? ` (${SESS[ref.sid].label} real)` : ''}. Cada °C de diferencia cambia el ritmo {draft.kPace} s/vta y la degradación un {Math.round(100 * draft.kDeg)}%.</p>
+            {hLapAvg && <p className="text-[11px] text-slate-500 mt-1">Referencia histórica ({hEds.length} carreras en seco): el ganador rodó de media {fmtLap(hLapAvg)} por vuelta con pista a {hAvg('ground')}° de media.</p>}</div>
         </div>
         <div className="space-y-3">
           <div><div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Previsión meteorológica</div>

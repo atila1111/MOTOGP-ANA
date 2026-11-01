@@ -20,8 +20,14 @@ cronometraje de MotoGP (Official MotoGP Timing) de cada Gran Premio y:
     limpia anclada en el ritmo real del viernes y la marca como SIMULADO.
 
 Datos reales incluidos como ejemplo: Gran Premio de Malasia (Sepang,
-2026): FP1, PR, FP2, Q1, Q2 y Sprint. La Carrera esta simulada hasta que
-subas sus PDF a MALASYA/RACE/.
+2026) completo: FP1, PR, FP2, Q1, Q2, Sprint y Carrera.
+
+Ademas de los PDF usa la API publica de motogp.com (clasificacion del
+Mundial, estadisticas de cada piloto, historico de cada circuito).
+
+Mas documentacion en el propio repositorio:
+  README.md      lista completa de funcionalidades, con capturas de pantalla
+  CHANGELOG.md   que trae cada version (tambien resumido en el apartado 11)
 
 
 2. REQUISITOS
@@ -83,8 +89,17 @@ subas sus PDF a MALASYA/RACE/.
    iniciar.bat / .sh      arranque del servidor local
    requirements.txt       dependencias de Python
    README.txt             este manual
+   README.md              portada del repositorio: funcionalidades y capturas
+   CHANGELOG.md           historial de versiones
+   API/                   datos de la API publica de motogp.com (los escribe descargar.py)
+     estado.json            fecha y hora de la ultima actualizacion
+     temporada.json         clasificacion del Mundial y calendario
+     pilotos.json           estadisticas de cada piloto y su resultado en cada GP
+     circuito_<COD>.json    ultimas ediciones del GP de cada circuito
+   docs/capturas/         capturas de pantalla del README.md
    tools/
-     descargar.py         baja los PDF oficiales de motogp.com a CIRCUITO/SESION/
+     descargar.py         baja los PDF y los datos de la API de motogp.com
+     capturas.py          (opcional) regenera las capturas de docs/capturas/
      fotos.py             descarga la foto de cada piloto (API de motogp.com)
      fotos/<numero>.webp  fotos ya descargadas (se incrustan en index.html)
      pipeline.py          lee los PDF, simula y construye los datos
@@ -97,6 +112,8 @@ subas sus PDF a MALASYA/RACE/.
    MANDALIKA/ PORTIMAO/ QATAR/ VALENCIA/     circuitos vacios, listos
    <CIRCUITO>/
      FP1/  PR/  FP2/  Q1/  Q2/  SPRINT/  RACE/     una carpeta por sesion
+     EVENTO/        informes del evento (Circuit Information, Entry, ...)
+     CAMPEONATO/    informes del campeonato (estadisticas, podios, poles, ...)
 
 Las carpetas de sesion se crean solas si faltan (tambien lo hacen
 instalar y iniciar). En git las carpetas vacias llevan un fichero
@@ -105,30 +122,63 @@ instalar y iniciar). En git las carpetas vacias llevan un fichero
 
 5. COMO CARGAR UN FIN DE SEMANA
 ---------------------------------------------------------------------
-5.0 Descarga automatica (recomendada)
-    En vez de copiar los PDF a mano, baja los oficiales desde motogp.com:
-      - Con el servidor en marcha, pulsa el boton "PDF motogp.com" de la
-        cabecera del panel (aparece tambien en la pantalla de un circuito
-        pendiente): descarga lo que falte o haya cambiado del circuito
-        activo y recarga la pagina.
+5.0 Recuperar resultados de MotoGP (recomendado)
+    En vez de copiar los PDF a mano, baja todo desde motogp.com:
+      - Con el servidor en marcha, pulsa "Recuperar resultados MotoGP" en la
+        cabecera del panel (tambien aparece en la pantalla de un circuito
+        pendiente). Descarga los PDF y los datos de la API del circuito
+        activo y recarga la pagina. Junto al boton se ve siempre la fecha y
+        hora de la ultima actualizacion (queda guardada en API/estado.json,
+        asi que tambien se ve al abrir index.html sin servidor).
       - Desde la consola:
           python tools/descargar.py                 evento en curso
           python tools/descargar.py --circuito qatar    un circuito concreto
           python tools/descargar.py --todos         todos los configurados
+          python tools/descargar.py --datos         solo los datos de la API, sin PDF
+          python tools/descargar.py --pdf           solo los PDF
           python tools/descargar.py --año 2025 --circuito malasya
                                                     temporada anterior: va a HISTORICO/2025/MALASYA/
           python tools/descargar.py --simular       muestra que bajaria
-    Cada sesion terminada se guarda en su carpeta con el nombre de la web;
-    Circuit Information, Entry, Rider Statistics y Event Maximum Speed van a
-    CIRCUITO/EVENTO/. Si un PDF cambia de tamano (resultado provisional ->
-    definitivo, Event Max Speed que crece con cada sesion) se sustituye; si
-    la web ya no sirve un fichero, se conserva el local. Tambien guarda
-    CIRCUITO/evento.json con el calendario, de donde sale la fecha y hora
-    de la Carrera para la prevision meteorologica.
+    Que baja:
+      - PDF de cada sesion terminada ("Session Results" de la web): Analysis,
+        Analysis By Lap, Average Speed, Classification, Fast Lap Rider, Fast
+        Lap Sequence, Grid, Lap Chart y la clasificacion del Mundial, en la
+        carpeta de la sesion con el nombre de la web.
+      - "Event Results": Circuit Information, Entry, Entry Biographical y
+        Event Maximum Speed, en CIRCUITO/EVENTO/.
+      - "Championship Results": Season Statistics, Nations Statistics, Riders
+        Performance, Pole Positions, Podiums y Riders All Time, en
+        CIRCUITO/CAMPEONATO/. Solo se archivan; no entran en el analisis.
+      - Datos de la API que no vienen en PDF, en API/: clasificacion del
+        Mundial y calendario, estadisticas de temporada y de carrera de cada
+        piloto con su resultado en cada GP, y el historico de las ultimas
+        ediciones de cada circuito (podio, pole, vuelta rapida, tiempo del
+        ganador, vueltas, temperatura de pista, aire y humedad, record).
+        Se usan en los paneles "Historico del circuito" y "Palmares en este
+        circuito y forma", en la referencia historica del simulador de carrera,
+        en el numero de vueltas de la Sprint y la Carrera de los circuitos que
+        aun no tienen PDF, y en su pantalla de "pendiente de datos".
+      - CIRCUITO/evento.json con el calendario, de donde salen la fecha y
+        hora de la Carrera para la prevision meteorologica.
+    Detalles:
+      - Si un PDF existe con el mismo tamano se salta (aunque tenga otro
+        nombre); si cambio de tamano (resultado provisional -> definitivo,
+        Event Max Speed que crece con cada sesion) se sustituye; si la web ya
+        no sirve un fichero, se conserva el local.
+      - La API lista algunos informes antes de que el servidor los tenga
+        (pasa unas horas despues de la carrera: Lap Chart, Fast Lap Sequence,
+        Average Speed, Fast Lap Rider). Mientras tanto se baja el Session.pdf
+        completo de esa sesion, que los contiene, y el panel funciona igual;
+        pulsa de nuevo mas tarde para tener los sueltos.
+      - Los datos de las ediciones cerradas de cada circuito se guardan y no se
+        vuelven a pedir; tardar menos de un minuto es lo normal.
     Cada circuito de CIRCUITS (pipeline.py) lleva el codigo de evento de la
     API ('api': 'MAL', 'INA', 'POR', 'QAT', 'VAL'). Solo se descargan PDF
     ya publicados, de la categoria MotoGP. Son propiedad de MotoGP/Dorna:
-    uso privado y sin sobrecargar el servicio (una peticion a la vez).
+    uso privado y sin sobrecargar el servicio (pocas peticiones a la vez, con
+    pausa). La API no es oficial ni esta documentada: puede cambiar sin aviso.
+    Si se reinicia el servidor tras actualizar el codigo, descargar.py se
+    recarga solo al pulsar el boton (no hace falta reiniciar por eso).
 
 5.1 Que PDF subir
 
@@ -214,13 +264,19 @@ muestran apagadas. Cada panel lleva junto al titulo una etiqueta con la
 sesion u objetivo a que se refieren sus datos (p. ej. "FP2 - REAL",
 "objetivo SPRINT", "datos hasta FP2").
 
+Boton "Recuperar resultados MotoGP" y "Ultima actualizacion": ver 5.0.
+La version del programa se ve bajo el nombre, arriba a la izquierda.
+
 Interruptor "Real si existe / Solo simulacion": muestra los datos reales
 cuando los hay o fuerza la simulacion limpia de todo el fin de semana.
 
 Pestanas:
    Resumen               Top 3 de Pole, Sprint y Domingo, con confianza,
                          ficha del circuito (records, pole y ritmo de la
-                         Sprint frente a las referencias de 2025) y
+                         Sprint frente a las referencias de 2025),
+                         historico del circuito (ultimas ediciones: podio,
+                         pole, vuelta rapida, condiciones), palmares de cada
+                         piloto en el trazado con su forma antes del GP, y
                          trazabilidad de datos (que PDF y con que
                          validacion cruzada se ha leido cada sesion).
    Telemetria            vueltas depuradas, sectores, vuelta ideal,
@@ -362,3 +418,66 @@ resultados reales.
 
 Las predicciones del modelo usan pesos fijados a mano y todavia sin
 calibrar con suficientes fines de semana reales: tomalas como orientativas.
+
+
+11. VERSIONES Y FUNCIONALIDADES NUEVAS
+---------------------------------------------------------------------
+Version actual: 0.6.0. La lista completa de funcionalidades esta en
+README.md; esto es lo que aporto cada version (mismo contenido que
+CHANGELOG.md, que es el que se mantiene primero).
+Cada version anade funcionalidades sobre la anterior. La version actual se ve en la cabecera del panel (debajo del nombre) y en VERSION de tools/pipeline.py.
+
+Version 0.6.0 - 1 nov 2026 - Recuperar resultados de MotoGP
+-----------------------------------------------------------
+
+  - Boton "Recuperar resultados MotoGP" en la cabecera (con el servidor en marcha): en un solo paso baja los PDF nuevos y los datos de la API publica de motogp.com y recarga el panel. Al lado se ve siempre la fecha y hora de la ultima actualizacion (tambien sin servidor, guardada en API/estado.json).
+  - Todos los PDF de la web: ademas de los de sesion, baja los de *Event Results* (Circuit Information, Entry, Entry Biographical, Event Maximum Speed) y los de *Championship Results* (Season Statistics, Nations Statistics, Riders Performance, Pole Positions, Podiums, Riders All Time) a <CIRCUITO>/CAMPEONATO/, y la clasificacion del Mundial de cada sesion (worldstanding.pdf).
+  - Respaldo con Session.pdf: si la API lista informes sueltos que el servidor todavia no ha publicado (suele pasar unas horas despues de la carrera), se baja el Session.pdf completo y de el se leen Lap Chart, Fastest Lap Sequence, etc.
+  - Datos de la API que no vienen en PDF (API/): clasificacion del Mundial y calendario, estadisticas de temporada y carrera de cada piloto con su resultado en cada GP, y el historico de las ultimas ediciones de cada circuito (podio, pole, vuelta rapida, tiempo del ganador, vueltas, temperatura de pista, aire y humedad, record de vuelta).
+  - Panel "Historico del circuito" y "Palmares en este circuito y forma 2026" (puesto y puntos antes del GP, resultados por ano en carrera y sprint) en la pestana Resumen.
+  - Simulador de carrera: boton "Media historica" con las condiciones de las carreras en seco anteriores y referencia del ritmo medio del ganador.
+  - Siguientes circuitos preparados (Mandalika, Portimao, Lusail, Valencia): fecha del GP, vueltas reales de Sprint y Carrera, record de pista e historico se rellenan solos desde la API y se ven en la pantalla del circuito aunque aun no haya PDF.
+  - Correccion: el panel "Evolucion cronologica (Fastest Laps Sequence)" salia vacio en Sprint y Carrera porque sus filas llevan delante el numero de vuelta; ahora se lee.
+  - Capturas de pantalla en docs/capturas/ y tools/capturas.py para regenerarlas; README.md con la lista completa de funcionalidades.
+
+Version 0.5.0 - 31 oct 2026 - Descarga automatica de PDF
+--------------------------------------------------------
+
+  - tools/descargar.py: baja los PDF oficiales desde la API publica de motogp.com a <CIRCUITO>/<SESION>/ con el nombre de la web; salta lo ya descargado (aunque tenga otro nombre), sustituye lo que cambio de tamano y conserva lo local si la web ya no lo sirve.
+  - Informes del evento a <CIRCUITO>/EVENTO/ y calendario en evento.json (de ahi salen la fecha y hora de la Carrera).
+  - Opciones: --circuito, --todos, --ano (temporadas anteriores a HISTORICO/), --simular, --bundle.
+  - Endpoint del servidor local y boton en la cabecera.
+
+Version 0.4.0 - 31 oct 2026 - Fotos, neumaticos y degradacion
+-------------------------------------------------------------
+
+  - Foto de cada piloto (descargadas con tools/fotos.py e incrustadas en el panel) en el Top 3 y las tablas.
+  - Neumatico delantero/trasero usado en cada tanda y en la mejor vuelta.
+  - Grafica de degradacion "proyectada vs real" tambien despues de la Sprint.
+  - Correccion de los compuestos reales (Soft/Medium/Hard) en la normalizacion del ritmo.
+  - Analisis local de la degradacion proyectada frente a la real (sin aplicar al modelo).
+
+Version 0.3.0 - 31 oct 2026 - Simulador de carrera y cabecera con sesiones
+--------------------------------------------------------------------------
+
+  - Simulador de carrera Monte Carlo vuelta a vuelta: seco, mojado y flag-to-flag, estado de pista editable, prevision de Open-Meteo y enlace al Met Office.
+  - Etiqueta con la sesion en el titulo de cada panel.
+  - Cabecera fija con los hitos y la barra de sesiones (FP1 ... RACE, marcadas REAL o SIM).
+  - Calibracion de la carrera simulada con el ritmo real de la Sprint.
+
+Version 0.2.0 - 31 oct 2026 - Informes del evento
+-------------------------------------------------
+
+  - Lectura de Entry List, Rider Statistics (Biographical), Circuit Information y Event Best Maximum Speed.
+  - Ficha del circuito (records, pole y ritmo de la Sprint frente a 2025) y prior suave por clasificacion del Mundial 2025.
+  - Parrillas oficiales (Grid) como nuevo factor de la Sprint y la Carrera.
+
+Version 0.1.0 - 31 oct 2026 - Primera version
+---------------------------------------------
+
+  - Lectura de los PDF oficiales de cronometraje (Analysis, Classification, Best Partial Times, Maximum Speed, Top Speed & Average, Fastest Laps Sequence, Qualifying Results, Lap Chart, Fastest Lap of each Rider) con validacion cruzada.
+  - Depuracion de vueltas, vuelta ideal por sectores, velocidades punta.
+  - Prediccion de Pole, Sprint y Carrera en cinco hitos del fin de semana usando solo lo conocido en cada uno.
+  - Pestana "Prediccion vs Realidad" con error de ritmo, podio acertado y diagnostico de la desviacion.
+  - Sesiones sin PDF simuladas y marcadas como SIMULADO.
+  - Cinco circuitos (Malasia con datos reales de ejemplo), instaladores para Windows y Linux, servidor local con recarga en F5 y manual README.txt.

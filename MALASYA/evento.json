@@ -95,15 +95,15 @@
    "type": "RAC",
    "number": null,
    "date": "2026-11-01T15:00:00",
-   "status": "NOT-STARTED",
+   "status": "FINISHED",
    "condition": {
-    "track": "",
-    "air": "º",
-    "humidity": "%",
-    "ground": "º",
-    "weather": ""
+    "track": "Dry",
+    "air": "36º",
+    "humidity": "47%",
+    "ground": "55º",
+    "weather": "Partly-Cloudy"
    }
   }
  ],
- "updated": "2026-10-31 12:55:29"
+ "updated": "2026-11-01 11:37:44"
 }

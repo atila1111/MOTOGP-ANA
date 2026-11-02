@@ -46,6 +46,15 @@ Se abre en <http://localhost:8000>. Con el servidor en marcha, el botón **«Rec
 
 ![Telemetría de la carrera](docs/capturas/04-telemetria-carrera.png)
 
+### Flujo de carrera (Sprint y Carrera reales)
+- **Hueco con el líder vuelta a vuelta**, adelantamientos marcados y ritmo de cada piloto frente al líder en cada vuelta.
+- **Tabla de adelantamientos** y qué pasó después con el hueco del líder.
+- **Ranking TOP 10 del más rápido al más lento** (ritmo, desgaste, pérdida por tramos, punta máxima y media).
+- **Veredicto sobre el supuesto «taponamiento»**: mide si ir pegado a otro piloto costaba tiempo y si el líder se escapó igual con pelea detrás.
+
+![Flujo de carrera: veredicto](docs/capturas/09-flujo-de-carrera-veredicto.png)
+![Flujo de carrera: hueco con el líder](docs/capturas/10-flujo-de-carrera-hueco.png)
+
 ### Ritmo y simulación
 
 ![Ritmo y simulación](docs/capturas/05-ritmo-y-simulacion.png)
@@ -88,7 +97,7 @@ docs/capturas/        capturas de pantalla de este README
 
 ## Versiones
 
-La versión actual es la **0.6.0**. Qué trae cada una está en [`CHANGELOG.md`](CHANGELOG.md).
+La versión actual es la **0.7.0**. Qué trae cada una está en [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Aviso
 

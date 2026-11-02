@@ -35,6 +35,9 @@ def main():
         click('Post-Sprint'); click('Ritmo'); shot('05-ritmo-y-simulacion')
         click('Post-Q2|post-Q2|Sábado . post-Q2'); click('Simulador de carrera'); shot('06-simulador-de-carrera')
         click('Post-Carrera'); click('Predicción vs Realidad'); shot('07-prediccion-vs-realidad')
+        click('Flujo de carrera'); shot('09-flujo-de-carrera-veredicto')
+        page.evaluate("document.querySelectorAll('section').forEach(s => { if (/Hueco con el líder vuelta a vuelta/i.test(s.innerText)) s.scrollIntoView({block: 'start'}); }); window.scrollBy(0, -190)"); page.wait_for_timeout(900)
+        page.screenshot(path=str(OUT / '10-flujo-de-carrera-hueco.png')); print('· 10-flujo-de-carrera-hueco')
         go('qatar'); shot('08-circuito-pendiente-con-historico')
         browser.close()
 

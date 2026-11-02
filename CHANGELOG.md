@@ -2,6 +2,15 @@
 
 Cada versión añade funcionalidades sobre la anterior. La versión actual se ve en la cabecera del panel (debajo del nombre) y en `VERSION` de `tools/pipeline.py`.
 
+## 0.7.0 · 2 nov 2026 · Flujo de carrera
+
+- **Nueva pestaña «Flujo de carrera»** para la Carrera y la Sprint reales (TOP 7 o TOP 10 a elegir):
+  - **Hueco con el líder vuelta a vuelta**, con el adelantamiento marcado en la gráfica, y **ritmo vuelta a vuelta frente al líder**.
+  - **Tabla de adelantamientos** entre los primeros: vuelta, quién pasa a quién y qué pasó con el hueco del que adelanta y del adelantado en las vueltas siguientes.
+  - **Ranking TOP 10 del más rápido al más lento**: ritmo (mediana), mejor vuelta, ritmo por tramos, desgaste, segundos que pierde con el líder en cada cuarto de carrera, punta máxima y punta media, con su puesto.
+  - **Veredicto «¿se escapó el líder por culpa de los adelantamientos de detrás?»**: en cuántas vueltas creció su ventaja sobre el 2º, cuántos adelantamientos hubo y, sobre todo, si ir pegado a otro piloto (<1 s) costaba tiempo respecto al ritmo propio, que es la señal medible que dejaría un piloto que tapona. Mide tiempos, no intenciones.
+- Función `raceFlow` en `tools/engine.js`; todo sale del tiempo acumulado en meta, y el hueco final coincide con la Classification oficial.
+
 ## 0.6.0 · 1 nov 2026 · Recuperar resultados de MotoGP
 
 - **Botón «Recuperar resultados MotoGP»** en la cabecera (con el servidor en marcha): en un solo paso baja los PDF nuevos y los datos de la API pública de motogp.com y recarga el panel. Al lado se ve siempre la **fecha y hora de la última actualización** (también sin servidor, guardada en `API/estado.json`).

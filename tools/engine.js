@@ -222,6 +222,54 @@ function realRowInfo(sid, num) {
   const s = realRaceStint(sid, num); if (!s) return {};
   return { pace: mean(s.tn), deg: s.b, sd: s.sd, len: s.len, mode: 'real', tyre: { f: s.compF, r: s.comp } };
 }
+/* ---------- flow of a real Sprint / Race: gap to the leader lap by lap, passes, pace and speed of the top N ----------
+   Everything comes from the lap times of the official Analysis (cumulative time = race time at the line), so the final gaps equal the Classification. */
+function raceFlow(sid, topN = 10) {
+  const S = SD[sid]; if (!S || !S.real || !S.results || !S.results.length) return null;
+  const N = S.nlaps, fin = S.results.filter(r => r.status === 'FIN').slice(0, topN).map(r => r.num);
+  if (fin.length < 3) return null;
+  const lap = {}, cum = {}, vel = {};
+  fin.forEach(n => { const L = (S.riders[String(n)] || []).slice().sort((a, b) => a.n - b.n); let c = 0; lap[n] = L.map(l => l.t); vel[n] = L.map(l => l.v || null); cum[n] = L.map(l => (c += l.t)); });
+  const full = fin.filter(n => cum[n].length >= N); if (full.length < 3) return null;
+  const lead = full[0], gap = {}, order = [];
+  full.forEach(n => { gap[n] = cum[n].map((c, i) => c - cum[lead][i]); });
+  for (let i = 0; i < N; i++) order.push([...full].sort((a, b) => cum[a][i] - cum[b][i]));
+  // passes: pair (a, b) where a was behind b at the previous line and is ahead now
+  const passes = [];
+  for (let i = 1; i < N; i++) {
+    const prev = order[i - 1], cur = order[i];
+    cur.forEach(a => prev.forEach(b => {
+      if (a !== b && prev.indexOf(a) > prev.indexOf(b) && cur.indexOf(a) < cur.indexOf(b)) {
+        const j = Math.min(i + 3, N - 1);
+        passes.push({ lap: i + 1, by: a, over: b, pos: cur.indexOf(a) + 1, gapBy: gap[a][i], gapOver: gap[b][i], gapByAfter: gap[a][j], gapOverAfter: gap[b][j], lapsAfter: j - i,
+          leadPass: a === lead || b === lead });
+      }
+    }));
+  }
+  const chase = passes.filter(p => !p.leadPass);
+  // the leader's margin over the rider that has just been passed / has just passed grows or shrinks over the next laps?
+  const grew = chase.filter(p => p.gapByAfter - p.gapBy > 0).length;
+  const lead2 = order.map((o, i) => (cum[o[1]][i] - cum[o[0]][i]));
+  const leadGrewLaps = lead2.slice(1).filter((g, i) => g > lead2[i]).length;
+  // pace per rider (laps 2..N, without anomalies > 107 % of the group median)
+  const all = []; full.forEach(n => lap[n].forEach((t, i) => { if (i >= 1) all.push(t); })); const med0 = median(all);
+  const ph = (n, a, b) => { const t = lap[n].filter((x, i) => i + 1 >= a && i + 1 <= b && x <= 1.07 * med0); return t.length ? mean(t) : NaN; };
+  const third = Math.floor((N - 1) / 3), P = [[2, 1 + third], [2 + third, 1 + 2 * third], [2 + 2 * third, N]];
+  const win = [[1, Math.round(N / 4)], [Math.round(N / 4), Math.round(N / 2)], [Math.round(N / 2), Math.round(3 * N / 4)], [Math.round(3 * N / 4), N]];
+  const pace = full.map(n => {
+    const t = lap[n].map((x, i) => ({ x, i: i + 1 })).filter(o => o.i >= 2 && o.x <= 1.07 * med0), xs = t.map(o => o.i), ys = t.map(o => o.x), lr = linreg(xs, ys);
+    const v = vel[n].filter((x, i) => i >= 1 && x), best = t.reduce((m, o) => o.x < m.x ? o : m, t[0]);
+    return { num: n, med: median(ys), mean: mean(ys), best: best.x, bestLap: best.i, ph: P.map(([a, b]) => ph(n, a, b)), deg: lr.b, vmax: Math.max(...v), vmean: mean(v), n: ys.length,
+      loss: n === lead ? null : win.map(([a, b]) => (gap[n][b - 1] - gap[n][a - 1]) / (b - a)), total: n === lead ? null : (gap[n][N - 1] - gap[n][0]) / (N - 1) };
+  });
+  // does following another rider cost time? lap time against the rider's own linear trend (laps 3..N-1), glued (< 1 s behind the one ahead) vs free
+  const trend = {}; full.forEach(n => { const xs = [], ys = []; lap[n].forEach((x, i) => { if (i >= 1 && i < N - 1) { xs.push(i + 1); ys.push(x); } }); trend[n] = linreg(xs, ys); });
+  const glued = [], free = [];
+  for (let i = 2; i < N - 1; i++) { const o = order[i - 1]; for (let k = 1; k < o.length; k++) { const f = o[k], g = cum[f][i - 1] - cum[o[k - 1]][i - 1], r = lap[f][i] - (trend[f].a + trend[f].b * (i + 1)); (g < 1.0 ? glued : free).push(r); } }
+  return { sid, N, lead, order, gap, lap, vel, cum, passes, chase, grew, lead2, leadGrewLaps, pace, P, win, topN: full.length, leadCrossed: order.slice(1).filter((o, i) => o[0] !== lead).length,
+    traffic: { glued: glued.length, gluedMean: glued.length ? mean(glued) : NaN, free: free.length, freeMean: free.length ? mean(free) : NaN } };
+}
+
 function realRaceStint(sid, num, ctx) {
   const s = stintsFor(sid, num, ctx || { off: { [sid]: [0, 0, 0, 0] } });
   return s.length ? s.reduce((m, x) => x.len > m.len ? x : m, s[0]) : null;

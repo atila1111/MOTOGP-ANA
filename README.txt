@@ -283,6 +283,11 @@ Pestanas:
                          velocidades punta, evolucion de la sesion y,
                          en Sprint/Carrera, direccion de carrera y salida.
    Ritmo & Simulacion    tablas de la prediccion, tandas y degradacion.
+   Flujo de carrera      Sprint y Carrera reales: hueco con el lider vuelta
+                         a vuelta, adelantamientos, ritmo frente al lider,
+                         ranking TOP 10 de ritmo y velocidad y un veredicto
+                         sobre si el lider se escapo por los pases de detras
+                         (mide si ir pegado a otro costaba tiempo).
    Simulador de carrera  simulacion Monte Carlo vuelta a vuelta de la
                          Carrera (ver apartado 6.1)
    Prediccion vs         lo que se predijo en cada hito frente a la
@@ -422,10 +427,20 @@ calibrar con suficientes fines de semana reales: tomalas como orientativas.
 
 11. VERSIONES Y FUNCIONALIDADES NUEVAS
 ---------------------------------------------------------------------
-Version actual: 0.6.0. La lista completa de funcionalidades esta en
+Version actual: 0.7.0. La lista completa de funcionalidades esta en
 README.md; esto es lo que aporto cada version (mismo contenido que
 CHANGELOG.md, que es el que se mantiene primero).
 Cada version anade funcionalidades sobre la anterior. La version actual se ve en la cabecera del panel (debajo del nombre) y en VERSION de tools/pipeline.py.
+
+Version 0.7.0 - 2 nov 2026 - Flujo de carrera
+---------------------------------------------
+
+  - Nueva pestana "Flujo de carrera" para la Carrera y la Sprint reales (TOP 7 o TOP 10 a elegir):
+      - Hueco con el lider vuelta a vuelta, con el adelantamiento marcado en la grafica, y ritmo vuelta a vuelta frente al lider.
+      - Tabla de adelantamientos entre los primeros: vuelta, quien pasa a quien y que paso con el hueco del que adelanta y del adelantado en las vueltas siguientes.
+      - Ranking TOP 10 del mas rapido al mas lento: ritmo (mediana), mejor vuelta, ritmo por tramos, desgaste, segundos que pierde con el lider en cada cuarto de carrera, punta maxima y punta media, con su puesto.
+      - Veredicto "se escapo el lider por culpa de los adelantamientos de detras?": en cuantas vueltas crecio su ventaja sobre el 2º, cuantos adelantamientos hubo y, sobre todo, si ir pegado a otro piloto (<1 s) costaba tiempo respecto al ritmo propio, que es la senal medible que dejaria un piloto que tapona. Mide tiempos, no intenciones.
+  - Funcion raceFlow en tools/engine.js; todo sale del tiempo acumulado en meta, y el hueco final coincide con la Classification oficial.
 
 Version 0.6.0 - 1 nov 2026 - Recuperar resultados de MotoGP
 -----------------------------------------------------------

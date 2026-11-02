@@ -10,7 +10,7 @@ Chart.defaults.plugins.tooltip.backgroundColor = '#0b0d10';
 Chart.defaults.plugins.tooltip.borderColor = '#2a313c';
 Chart.defaults.plugins.tooltip.borderWidth = 1;
 
-const TABS = [['res', 'Resumen'], ['tel', 'Telemetría'], ['pace', 'Ritmo & Simulación'], ['race', 'Simulador de carrera'], ['acc', 'Predicción vs Realidad'], ['cmp', 'Sim vs Real']];
+const TABS = [['res', 'Resumen'], ['tel', 'Telemetría'], ['pace', 'Ritmo & Simulación'], ['flow', 'Flujo de carrera'], ['race', 'Simulador de carrera'], ['acc', 'Predicción vs Realidad'], ['cmp', 'Sim vs Real']];
 const SIDS_ALL = ['FP1', 'PR', 'FP2', 'Q1', 'Q2', 'SPR', 'RAC'];
 const TARGETS = [['POLE', 'Pole'], ['SPR', 'Sprint'], ['RAC', 'Domingo']];
 const WHY = { OUT: 'Out-lap', IN: 'In-lap', ANU: 'Anulada', LENTA: '>107%', SAL: 'Salida' };
@@ -195,6 +195,85 @@ function PalmaresPanel({ M, sel }) {
         <td className="text-slate-400">{r.circ.length ? r.circ.map(e => <span key={e.y} className="mr-2 whitespace-nowrap"><span className="text-slate-600">{String(e.y).slice(2)}</span> {e.r != null ? e.r : '—'}<span className="text-slate-600">·</span>{e.s != null ? e.s : '—'}</span>) : <span className="text-slate-600">primera vez en este trazado en MotoGP</span>}</td></tr>)}</tbody></table></div>
     <p className="text-[11px] text-slate-500 mt-2">Es información de contexto: de momento no entra en la predicción (en la Sprint y la Carrera de Malasia el puesto en el Mundial mejora el acierto, pero con una sola carrera no hay base para cambiar el modelo).</p>
   </Panel>;
+}
+
+/* ---------- TAB: Flujo de carrera (hueco al líder vuelta a vuelta, adelantamientos, ritmo y velocidad del TOP 10) ---------- */
+function FlujoCarrera({ M }) {
+  const avail = ['RAC', 'SPR'].filter(x => SD[x] && SD[x].real && M.sessions.includes(x));
+  const [sid, setSid] = useState(avail[0]), [topN, setTopN] = useState(7);
+  const F = useMemo(() => sid ? raceFlow(sid, 10) : null, [sid]);
+  if (!avail.length || !F) return <Panel title="Flujo de carrera" sess="sin carrera real"><div className="text-sm text-slate-400">Este análisis necesita los PDF reales de la Sprint o de la Carrera de {CIRC.folder}/ (Analysis y Classification). Pulsa «Recuperar resultados MotoGP» cuando estén publicados.</div></Panel>;
+  const S = SD[sid], tag = SESS[sid].label + ' · REAL', laps = Array.from({ length: F.N }, (_, i) => i + 1);
+  const shown = F.order[F.N - 1].slice(0, topN), lead = F.lead, others = shown.filter(n => n !== lead);
+  const f1 = (x, d = 2) => (x >= 0 ? '+' : '') + x.toFixed(d), sec = x => x.toFixed(2);
+  const gapData = useMemo(() => {
+    const pm = {}; F.passes.filter(p => shown.includes(p.by) && shown.includes(p.over)).forEach(p => { if (!pm[p.lap]) pm[p.lap] = p; });
+    return { labels: laps, datasets: [
+      ...shown.map(n => ({ label: mm(n), data: F.gap[n].map(g => +g.toFixed(3)), borderColor: RIDER[n].color, backgroundColor: RIDER[n].color, pointRadius: 0, borderWidth: n === lead ? 2.5 : 2, borderDash: n === lead ? [5, 4] : [], tension: 0.15 })),
+      { label: 'Adelantamiento', data: laps.map(l => pm[l] ? +pm[l].gapBy.toFixed(3) : null), showLine: false, pointStyle: 'triangle', pointRadius: 8, pointHoverRadius: 10, backgroundColor: '#f8fafc', borderColor: '#0b0e13', borderWidth: 1.5, passTxt: laps.map(l => pm[l] ? `V${l}: ${mm(pm[l].by)} adelanta a ${mm(pm[l].over)} (hueco al líder ${sec(pm[l].gapBy)} s)` : null) }] };
+  }, [F, topN]);
+  const gapOpts = useMemo(() => ({ plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: c => c.dataset.passTxt ? c.dataset.passTxt[c.dataIndex] : `${c.dataset.label}: ${c.parsed.y.toFixed(2)} s` } } },
+    scales: { x: axisT('vuelta'), y: Object.assign({ reverse: true }, axisT('hueco con el líder (s) · el líder arriba')) } }), []);
+  const deltaData = useMemo(() => ({ labels: laps.slice(1), datasets: others.map(n => ({ label: mm(n), data: F.lap[n].slice(1).map((t, i) => +(t - F.lap[lead][i + 1]).toFixed(3)), borderColor: RIDER[n].color, backgroundColor: RIDER[n].color, pointRadius: 2, borderWidth: 1.6, tension: 0.2 })) }), [F, topN]);
+  const deltaOpts = useMemo(() => ({ plugins: { legend: { position: 'bottom' } }, scales: { x: axisT('vuelta'), y: axisT('tiempo de vuelta − líder (s) · >0 el líder gana tiempo') } }), []);
+  const chase = F.chase, grewN = chase.filter(p => p.gapByAfter - p.gapBy > 0).length;
+  const tr = F.traffic, cost = tr.gluedMean - tr.freeMean;
+  const lead3 = F.passes.filter(p => p.leadPass).length;
+  const rk = (key, dir = -1) => { const o = [...F.pace].sort((a, b) => dir * (a[key] - b[key])); return Object.fromEntries(o.map((p, i) => [p.num, i + 1])); };
+  const rMed = rk('med', 1), rMax = rk('vmax'), rAvg = rk('vmean');
+  const rows = [...F.pace].sort((a, b) => a.med - b.med);
+  const th = (l, t, c = '') => <th className={'pr-3 py-1.5 ' + c} title={t}>{l}</th>;
+  const kpi = (l, v, sub, cls = 'text-white') => <div className="rounded-lg border border-[#1f2630] bg-[#0d1117] px-4 py-3"><div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{l}</div><div className={'text-xl font-black tabular-nums mt-1 ' + cls}>{v}</div><div className="text-[11px] text-slate-400">{sub}</div></div>;
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center gap-2"><span className="text-[10px] uppercase tracking-[0.14em] text-slate-500 mr-1">Sesión</span>
+      {avail.map(x => <Chip key={x} active={x === sid} onClick={() => setSid(x)}>{SESS[x].label} · {SD[x].nlaps} vueltas</Chip>)}
+      <span className="ml-3 text-[10px] uppercase tracking-[0.14em] text-slate-500">Pilotos</span>{[7, 10].map(n => <Chip key={n} active={topN === n} onClick={() => setTopN(n)}>TOP {n}</Chip>)}</div>
+    <Panel title="¿Se escapó el líder por culpa de los adelantamientos de detrás?" sess={tag} right={<span className="text-[11px] text-slate-500">referencia = ganador ({mm(lead)})</span>}>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {kpi('Ventaja sobre el 2º', f1(F.lead2[F.N - 1]).replace('+', '') + ' s', `${sec(F.lead2[0])} s en la V1 · creció en ${F.leadGrewLaps} de ${F.N - 1} vueltas`)}
+        {kpi('Adelantamientos entre perseguidores', chase.length, `${lead3 ? lead3 + ' con el líder implicado · ' : ''}tras ${grewN} de ellos el que adelantaba siguió perdiendo contra el líder`)}
+        {kpi('Pegado a otro (<1 s)', f1(tr.gluedMean) + ' s/vta', `frente a ${f1(tr.freeMean)} libre · ${tr.glued} vs ${tr.free} vueltas`, Math.abs(cost) < 0.1 ? 'text-emerald-300' : 'text-amber-300')}
+        {kpi('Coste de ir detrás de otro', f1(cost) + ' s/vta', 'vuelta propia − su tendencia, pegado − libre', Math.abs(cost) < 0.1 ? 'text-emerald-300' : 'text-amber-300')}
+      </div>
+      <div className="mt-3 text-sm text-slate-300 leading-relaxed space-y-2">
+        <p><b className="text-slate-100">Lectura.</b> {F.leadGrewLaps >= 0.6 * (F.N - 1) ? <>El líder fue ampliando su ventaja sobre el 2º en <b>{F.leadGrewLaps} de {F.N - 1} vueltas</b>, con {chase.length} adelantamientos detrás de él: el líder se fue igual, hubiera o no pelea detrás.</> : <>La ventaja del líder subió y bajó ({F.leadGrewLaps} de {F.N - 1} vueltas crecía).</>}{' '}
+          {Math.abs(cost) < 0.1 ? <>Los pilotos que iban pegados a otro no rodaron más lento que su propio ritmo ({f1(tr.gluedMean)} s frente a {f1(tr.freeMean)} s libres): <b>no hay rastro de que ir detrás de otro les costara tiempo</b>, que es lo que tendría que verse si alguien los estuviera frenando.</> : <>Ir pegado a otro costó de media <b>{cost.toFixed(2)} s por vuelta</b>, lo normal al seguir a un rival (aire sucio, frenadas más tempranas); es un coste pequeño y repartido entre todos, no un patrón sobre un piloto concreto.</>}</p>
+        <p className="text-[12px] text-slate-500">Esto mide tiempos, no intenciones: no puede probar que nadie lo hiciera o no a propósito, pero un tapón real dejaría una señal medible (el perseguidor pierde tiempo mientras va detrás y el líder gana justo esas vueltas). {F.leadCrossed ? `Aquí el líder cambió ${F.leadCrossed} veces, por eso el hueco se mide contra el ganador, que no lideró todo el tiempo.` : 'El hueco de cada piloto es su tiempo de carrera acumulado menos el del ganador en la meta de cada vuelta; el último punto coincide con la Classification oficial.'}</p></div>
+    </Panel>
+    <Panel title="Hueco con el líder vuelta a vuelta" sess={tag} right={<span className="text-[11px] text-slate-500">▲ adelantamiento entre pilotos del gráfico</span>}><ChartCanvas type="line" data={gapData} options={gapOpts} height={340} /></Panel>
+    <Panel title="Ritmo vuelta a vuelta frente al líder" sess={tag} right={<span className="text-[11px] text-slate-500">por encima de 0 = el líder rodó más rápido en esa vuelta</span>}><ChartCanvas type="line" data={deltaData} options={deltaOpts} height={300} /></Panel>
+    <Panel title="Adelantamientos" sess={tag} right={<span className="text-[11px] text-slate-500">entre los {F.topN} primeros · detectados por el tiempo acumulado en meta</span>}>
+      {F.passes.length ? <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums">
+        <thead><tr className="text-left text-[10px] uppercase tracking-wider text-slate-500">{th('Vuelta')}{th('Adelanta')}{th('A')}{th('Pasa a la posición')}{th('Hueco del que adelanta con el líder', 'En la vuelta del adelantamiento → 3 vueltas después (o hasta el final)')}{th('Hueco del adelantado', 'En la vuelta del adelantamiento → 3 vueltas después (o hasta el final)')}{th('Qué pasó con el líder')}</tr></thead>
+        <tbody>{F.passes.map((p, i) => { const d = p.gapByAfter - p.gapBy;
+          return <tr key={i} className="border-t border-[#1a2029]"><td className="pr-3 py-1.5 font-bold text-slate-200">{p.lap}</td>
+            <td className="pr-3"><span className="inline-flex items-center gap-1.5"><Dot n={p.by} />{mm(p.by)}</span></td><td className="pr-3"><span className="inline-flex items-center gap-1.5"><Dot n={p.over} />{mm(p.over)}</span></td>
+            <td className="pr-3 text-slate-300">{p.pos}º</td>
+            <td className="pr-3 text-slate-300">{p.by === lead ? 'líder' : sec(p.gapBy) + ' → ' + sec(p.gapByAfter) + ' s'}</td>
+            <td className="pr-3 text-slate-400">{p.over === lead ? 'líder' : sec(p.gapOver) + ' → ' + sec(p.gapOverAfter) + ' s'}</td>
+            <td className={'text-[11px] ' + (p.leadPass ? 'text-amber-300' : d > 0 ? 'text-emerald-300' : 'text-slate-400')}>{p.leadPass ? 'cambio de líder' : d > 0 ? `el líder le sacó ${d.toFixed(2)} s más en ${p.lapsAfter} vta${p.lapsAfter > 1 ? 's' : ''}` : `el que adelanta recortó ${(-d).toFixed(2)} s en ${p.lapsAfter} vta${p.lapsAfter > 1 ? 's' : ''}`}</td></tr>; })}</tbody></table></div>
+        : <div className="text-sm text-slate-400">No hubo adelantamientos entre estos pilotos.</div>}
+      <p className="text-[11px] text-slate-500 mt-2">Un pase detectado en la vuelta N significa que el orden en la línea de meta cambió entre N−1 y N; el adelantamiento real pudo ser unos metros antes y la gráfica oficial Lap Chart puede situarlo una vuelta distinto.</p>
+    </Panel>
+    <Panel title={`Ritmo y velocidad · TOP ${F.topN}, del más rápido al más lento`} sess={tag} right={<span className="text-[11px] text-slate-500">ritmo = mediana de las vueltas 2–{F.N} sin anomalías</span>}>
+      <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums">
+        <thead><tr className="text-left text-[10px] uppercase tracking-wider text-slate-500">{th('#')}{th('Piloto')}{th('Ritmo', 'Mediana de las vueltas 2..N')}{th('vs líder', 'Diferencia de la mediana con la del ganador')}{th('Mejor', 'Mejor vuelta (nº de vuelta)')}
+          {F.P.map(([a, b], i) => <React.Fragment key={i}>{th(`V${a}-${b}`, 'Media de las vueltas de este tramo', 'text-slate-400')}</React.Fragment>)}{th('Desgaste', 's/vuelta cada vuelta (regresión de las vueltas limpias)')}
+          {F.win.map(([a, b], i) => <React.Fragment key={i}>{th(`Pierde V${a}-${b}`, 'Segundos por vuelta que pierde (+) o gana (−) con el líder en este tramo', 'text-slate-400')}</React.Fragment>)}{th('Punta', 'Velocidad punta máxima (km/h)')}{th('Punta media', 'Media de la punta de cada vuelta, sin la V1')}</tr></thead>
+        <tbody>{rows.map((p, i) => <tr key={p.num} className="border-t border-[#1a2029]">
+          <td className="pr-3 py-1.5 font-bold text-slate-200">{i + 1}</td>
+          <td className="pr-3"><span className="inline-flex items-center gap-1.5"><Avatar n={p.num} size={22} /><span className="text-slate-100 font-semibold">{mm(p.num)}</span><span className="text-slate-600">P{S.results.find(r => r.num === p.num).pos}</span></span></td>
+          <td className="pr-3 text-slate-100 font-bold">{fmtLap(p.med)}</td>
+          <td className="pr-3 text-slate-400">{p.num === lead ? '—' : '+' + (p.med - F.pace.find(x => x.num === lead).med).toFixed(3)}</td>
+          <td className="pr-3 text-slate-300">{fmtLap(p.best)} <span className="text-slate-600">v{p.bestLap}</span></td>
+          {p.ph.map((x, k) => <td key={k} className="pr-3 text-slate-400">{fmtLap(x)}</td>)}
+          <td className="pr-3 text-slate-300">{'+' + p.deg.toFixed(3)}</td>
+          {(p.loss || F.win.map(() => null)).map((x, k) => <td key={k} className={'pr-3 ' + (x == null ? 'text-slate-600' : x < 0 ? 'text-emerald-300' : x > 0.5 ? 'text-red-300' : 'text-slate-300')}>{x == null ? '—' : f1(x)}</td>)}
+          <td className="pr-3 text-slate-300">{p.vmax.toFixed(1)} <span className="text-slate-600">#{rMax[p.num]}</span></td>
+          <td className="pr-3 text-slate-300">{p.vmean.toFixed(1)} <span className="text-slate-600">#{rAvg[p.num]}</span></td></tr>)}</tbody></table></div>
+      <p className="text-[11px] text-slate-500 mt-2">La punta depende mucho del rebufo y de la moto: un piloto muy rápido en recta no tiene por qué ser el de mejor ritmo. «Pierde» es el tiempo por vuelta que cede o gana respecto al líder dentro del tramo, calculado con el tiempo acumulado en meta.</p>
+    </Panel>
+  </div>;
 }
 
 /* ---------- TAB: Resumen ---------- */
@@ -781,6 +860,7 @@ function App() {
       <div className="min-w-0" key={view}>
         {tab === 'res' && <Resumen snap={snap} prev={prev} M={M} sel={orderedSel} goPace={t => { setTarget(t); setTab('pace'); }} goSim={() => setTab('race')} />}
         {tab === 'race' && <Simulador M={M} sel={orderedSel} />}
+        {tab === 'flow' && <FlujoCarrera M={M} />}
         {tab === 'tel' && <Telemetria snap={snap} M={M} sel={orderedSel} view={view} sid={curS} />}
         {tab === 'pace' && <Ritmo snap={snap} M={M} sel={orderedSel} target={target} setTarget={setTarget} />}
         {tab === 'acc' && <Precision M={M} sel={orderedSel} view={view} />}

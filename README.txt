@@ -427,10 +427,17 @@ calibrar con suficientes fines de semana reales: tomalas como orientativas.
 
 11. VERSIONES Y FUNCIONALIDADES NUEVAS
 ---------------------------------------------------------------------
-Version actual: 0.7.0. La lista completa de funcionalidades esta en
+Version actual: 0.7.1. La lista completa de funcionalidades esta en
 README.md; esto es lo que aporto cada version (mismo contenido que
 CHANGELOG.md, que es el que se mantiene primero).
 Cada version anade funcionalidades sobre la anterior. La version actual se ve en la cabecera del panel (debajo del nombre) y en VERSION de tools/pipeline.py.
+
+Version 0.7.1 - 6 nov 2026 - Catar y lectura de los PDF de Lusail
+-----------------------------------------------------------------
+
+  - Correccion: los PDF de Lusail (Catar) empiezan con etiquetas sueltas antes del titulo y no se reconocian, asi que el circuito seguia "pendiente" aunque estuvieran descargados. Ahora se detectan y Catar se activa con FP1 y PR reales (tambien se reconocen los PDF antiguos de Mandalika).
+  - Historico del circuito: ya no incluye la fila de una edicion del ano en curso que aun no tiene carrera.
+  - Catar: 18 pilotos en las sesiones oficiales (la API tambien clasifica solo a 18).
 
 Version 0.7.0 - 2 nov 2026 - Flujo de carrera
 ---------------------------------------------

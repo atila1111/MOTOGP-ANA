@@ -97,7 +97,7 @@ docs/capturas/        capturas de pantalla de este README
 
 ## Versiones
 
-La versión actual es la **0.7.0**. Qué trae cada una está en [`CHANGELOG.md`](CHANGELOG.md).
+La versión actual es la **0.7.1**. Qué trae cada una está en [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Aviso
 

@@ -273,7 +273,7 @@ def datos_circuito(circ, seasons, cur_events, log, simulate=False):
         if not ev or date.fromisoformat(ev['date_start']) > date.today(): continue
         try: ed = edition(ev, yr)
         except Exception as e: log(f'  ! {code} {yr}: {e}'); continue
-        if ed and ed['cond']: editions.append(ed); log(f'  . {code} {yr}: {((ed.get("race") or {}).get("podium") or [{}])[0].get("name", "sin carrera")}')
+        if ed and ed['cond'] and ed.get('race'): editions.append(ed); log(f'  . {code} {yr}: {((ed.get("race") or {}).get("podium") or [{}])[0].get("name", "sin carrera")}')
     editions.sort(key=lambda e: -e['year'])
     rec = next((e['record'] for e in editions if e.get('record')), None)
     out = {'code': code, 'circuit': ((cur_ev or {}).get('circuit') or {}).get('name'), 'record': rec, 'editions': editions}

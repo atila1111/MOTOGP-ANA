@@ -30,7 +30,7 @@ PDF_OVERRIDE = os.environ.get('MOTOGP_PDF_DIR')            # test hook: replaces
 SESSION_DIRS = ['FP1', 'PR', 'FP2', 'Q1', 'Q2', 'SPRINT', 'RACE']      # inner folders prepared for every circuit
 # One entry per circuit folder in the project root. Lap counts are only the defaults used while the Sprint/Race are simulated
 # (a real Sprint/Race replaces them); lengths are the published track lengths. `salt` varies the seeded simulation per circuit.
-VERSION = '0.7.0'                                          # keep in step with CHANGELOG.md
+VERSION = '0.7.1'                                          # keep in step with CHANGELOG.md
 CIRCUITS = [
     {'id': 'malasya', 'folder': 'MALASYA', 'flag': '🇲🇾', 'short': 'Sepang', 'name': 'Petronas Sepang International Circuit', 'gp': 'Gran Premio de Malasia',
      'length': 5.543, 'sprintLaps': 10, 'raceLaps': 20, 'record': {'t': 116.337, 'who': 'F. Bagnaia', 'year': 2024}, 'weather': None, 'salt': 0, 'api': 'MAL',
@@ -133,7 +133,7 @@ def detect_text(txt):
     """Title of ONE page -> (sid, kind). kind None when the page is not a recognised report (or is an analysis continuation page)."""
     up = (txt or '').upper()
     if 'GRAND PRIX' not in up: return None, None
-    first = next((l.strip() for l in up.split(chr(10)) if l.strip()), '')
+    first = next((l.strip() for l in up.split(chr(10)) if len(l.strip()) > 5), '')            # Lusail's PDFs start with stray icon labels ("i2", "i3") before the title
     if any(k in first for k in IGNORED_TITLES): return None, None
     kind = next((k for key, k in TITLE_KINDS if key in first), None)
     if kind is None: return None, None

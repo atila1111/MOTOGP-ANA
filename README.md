@@ -30,6 +30,7 @@ Se abre en <http://localhost:8000>. Con el servidor en marcha, el botón **«Rec
 - **Pole** (ajustada a la mejor vuelta posible), **Sprint** y **Carrera** con ritmo, degradación, neumático delantero/trasero, parrilla oficial, punta y un prior suave por la clasificación del Mundial.
 - Confianza de cada predicción y Top 3 con **foto de cada piloto**.
 - Evolución esperada de la pista y normalización del ritmo por compuesto.
+- **Calibrado con carreras reales**: tanda más rápida de práctica como base y degradación esperada del campo por circuito, medida en 35 carreras de 2025 y 2026.
 
 ### Predicción vs Realidad
 - Error de ritmo por hito y por piloto, podio acertado, correlación de posiciones.
@@ -96,11 +97,12 @@ API/                  datos de la API pública: Mundial, pilotos, histórico por
 MALASYA/ …            un directorio por circuito, con una carpeta por sesión
 docs/capturas/        capturas de pantalla de este README
 tools/calibrar.py     (opcional) banco de pruebas para recalibrar el modelo con las carreras reales
+tools/histrace.py     degradación real de las carreras pasadas (prior del modelo); se actualiza con el botón
 ```
 
 ## Versiones
 
-La versión actual es la **0.8.1**. Qué trae cada una está en [`CHANGELOG.md`](CHANGELOG.md).
+La versión actual es la **0.9.0**. Qué trae cada una está en [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Aviso
 

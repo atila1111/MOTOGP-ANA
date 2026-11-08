@@ -286,7 +286,7 @@ def run_datos(circuits=None, simulate=False, log=say):
     events = {e['short_name']: e for e in api(f'results/events?seasonUuid={cur["id"]}') if not e.get('test')}
     temp, riders = datos_temporada(cur['id'], cur['year'], events, log)
     old = jload(API_DIR / 'pilotos.json', {})
-    pilotos = {}
+    pilotos = dict(old)                                            # riders who skipped the latest race (injured, substitutes) keep their previous statistics
     def one(ref):
         try: r = datos_piloto(ref)
         except Exception as e:
@@ -314,6 +314,10 @@ def recuperar(circuits=None, year=None, active_only=False, simulate=False, bundl
     if datos and not year:
         try: out['datos'] = run_datos(circuits, simulate, log)
         except Exception as e: out['errores'].append(f'datos API: {e}'); log(f'  ! datos API: {e}')
+    if datos and not year and not simulate and out['datos']:
+        try:
+            import histrace; histrace.main()                         # field degradation of every dry race so far (API/degradacion.json): the prior of the race estimate
+        except Exception as e: log(f'  ! degradacion historica: {e}')
     if not simulate and (out['datos'] or out['eventos']) and not year:
         est = jload(API_DIR / 'estado.json', {'circuitos': {}}); now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         est['actualizado'] = now

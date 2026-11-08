@@ -22,18 +22,18 @@ function load(file, opt) {
       let e;
       if (pool.length) {
         const s = OPT.stint === 'fastest' ? pool.reduce((m, x) => x.med < m.med ? x : m, pool[0]) : pool.reduce((m, x) => (x.len > m.len || (x.len === m.len && x.med < m.med)) ? x : m, pool[0]);
-        const b = shrink(s.b, s.len, 0.03, 6);
+        const b = shrink(s.b, s.len, OPT.degSrc === 'hist' ? DEG_PRIOR : 0.03, OPT.degK);
         e = { a: s.med - b * (s.len - 1) / 2 + CAL.race[mode], b, sd: s.sd, len: s.len, mode, comp: s.comp, compF: s.compF };
       } else e = { a: A.bestN + CAL.race.best, b: 0.03, sd: 0.2, len: 0, mode: 'best', comp: A.bestTyre && A.bestTyre.r, compF: A.bestTyre && A.bestTyre.f };
-      if (spr && spr.len >= 6) { const aS = spr.a + CAL.sprToRace; e.a = (1 - OPT.wSpr) * e.a + OPT.wSpr * aS; e.b = 0.5 * e.b + 0.5 * shrink(spr.b, spr.len, 0.03, 6, 0.25); e.mode = e.mode + '+spr'; }
+      if (spr && spr.len >= 6) { const aS = spr.a + CAL.sprToRace; e.a = (1 - OPT.wSpr) * e.a + OPT.wSpr * aS; if (OPT.sprDeg !== 'none') e.b = 0.5 * e.b + 0.5 * shrink(spr.b, spr.len, 0.03, 6, 0.25); e.mode = e.mode + '+spr'; }
       return e; };
     buildView('auto', DATA.sessions); setView('auto');`, ctx);
   return ctx;
 }
 const BASE = { name: 'actual', race: false };
 const grid = [BASE];
-for (const stint of ['longest', 'fastest']) for (const wSpr of [0.35, 0.55, 0.75]) for (const calShort of [0.2, 0.34, 0.5]) for (const prior of [0.02, 0.04])
-  grid.push({ name: `${stint}|spr${wSpr}|cal${calShort}|prior${prior}`, race: true, stint, wSpr, calShort, prior });
+for (const stint of ['longest', 'fastest']) for (const wSpr of [0.55, 0.75]) for (const calShort of [0.34, 0.5]) for (const degK of [6, 25, 1000]) for (const degSrc of ['0.03', 'hist']) for (const sprDeg of ['blend', 'none'])
+  grid.push({ name: `${stint}|spr${wSpr}|cal${calShort}|degK${degK}|deg${degSrc}|sprdeg-${sprDeg}`, race: true, stint, wSpr, calShort, prior: 0.02, degK, degSrc, sprDeg });
 
 const results = grid.map(opt => {
   const per = files.map(file => {
@@ -59,5 +59,11 @@ if (n >= 2) {
   const best = results.slice(1).filter(r => r.mae <= base.mae * 1.10).sort((a, b) => b.rho - a.rho)[0];
   if (best) { console.log('--- detalle por carrera (rho SAT / SPR) de actual y de la mejor:');
     files.forEach((file, i) => console.log(file.split(/[\\/]/).pop().padEnd(28), 'actual', f(base.per[i].SAT.rho, 2), f(base.per[i].SPR.rho, 2), '| mejor', f(best.per[i].SAT.rho, 2), f(best.per[i].SPR.rho, 2))); }
+}
+// efecto medio de cada ajuste (promedio de todas las variantes que lo llevan): sirve para ver cuales mejoran de forma consistente y no por una combinacion afortunada
+console.log('--- efecto medio de cada ajuste (MAE / rho / podio):');
+for (const key of ['stint', 'wSpr', 'calShort', 'degK', 'degSrc', 'sprDeg']) for (const val of [...new Set(results.slice(1).map(r => r.opt[key]))]) {
+  const g = results.slice(1).filter(r => r.opt[key] === val), m = k => g.reduce((a, r) => a + r[k], 0) / g.length;
+  console.log(`  ${key}=${val}`.padEnd(24), f(m('mae')).padStart(6), f(m('rho')).padStart(6), f(m('ov'), 2).padStart(6));
 }
 console.log('Aviso: con pocas carreras una variante puede ganar por azar; solo cambia el modelo lo que mejore en TODAS las carreras.');

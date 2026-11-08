@@ -806,7 +806,7 @@ function Simulador({ M, sel }) {
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">{fld('laps', 'Vueltas')}{fld('runs', 'Simulaciones', 50)}{fld('seed', 'Semilla', 1, 'w-20')}{fld('paceSd', 'Incertidumbre ritmo (s/vta)', 0.05)}
               {fld('crashPct', 'Caídas en seco (% por piloto)', 0.5)}{fld('wetCrashMult', 'Caídas en mojado (×)', 0.5)}{fld('wetPen', 'Mojado: +s/vta', 0.5)}{fld('wetSd', 'Mojado: dispersión pilotos (s)', 0.1)}
               {fld('kPace', 'Temp: s/vta por °C', 0.002, 'w-20')}{fld('kDeg', 'Temp: degradación por °C', 0.01, 'w-20')}</div>
-            <p className="text-[11px] text-slate-500 mt-2">Son supuestos, no calibrados con carreras reales: el mojado no tiene datos propios de cada piloto (se sortea su habilidad), y la sensibilidad térmica no está medida. Úsalos para comparar escenarios, no como predicción exacta.</p></details>
+            <p className="text-[11px] text-slate-500 mt-2">El ritmo base y la degradación se calibraron con las carreras reales (Malasia y Catar 2026){DATA.degPrior ? <>; degradación esperada del campo en este circuito: <b className="text-slate-300">{DATA.degPrior.value.toFixed(3)} s/vta²</b> ({DATA.degPrior.src})</> : null}. Lo demás son supuestos: el mojado no tiene datos propios de cada piloto (se sortea su habilidad) y la sensibilidad térmica no está medida. Úsalos para comparar escenarios, no como predicción exacta.</p></details>
         </div>
       </div>
     </Panel>

@@ -36,6 +36,7 @@ const median = a => { if (!a.length) return NaN; const s = [...a].sort((x, y) =>
 /* weak prior from the Entry/Rider Statistics PDFs: position in the 2025 championship. Practice stints are short and noisy, so Sprint/Race pace is nudged
    PRIOR_WC s/lap per place away from the field median (clamped). 0.02 is half of what fits the first real Sprint of the season: re-check with more races. */
 const PRIOR_WC = 0.02;
+const DEG_PRIOR = (DATA.degPrior && DATA.degPrior.value != null) ? DATA.degPrior.value : 0.03;       // field degradation expected at this circuit (API/degradacion.json); 0.03 without history
 const WC = Object.fromEntries(R.filter(r => r.bio && r.bio.wc25).map(r => [r.num, r.bio.wc25]));
 const mean = a => a.reduce((x, y) => x + y, 0) / (a.length || 1);
 const stdev = a => { if (a.length < 2) return 0; const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
@@ -199,14 +200,17 @@ function sprintEst(A) {
   }
   return { a: A.bestN + CAL.spr.best, b: 0.03, sd: 0.2, len: 0, mode: 'best', comp: A.bestTyre && A.bestTyre.r, compF: A.bestTyre && A.bestTyre.f };
 }
+/* Race pace estimate from practice. Recalibrated with the real races of Malaysia and Qatar 2026 (tools/calibrar.js):
+   - the stint is the FASTEST one of 4 or more laps (the longest one carried more fuel or a different programme and made riders like Bezzecchi look 1 s/lap slower);
+   - the degradation is NOT read from the practice slope (4-6 laps: +-0.3 noise, capped at 0.09 it cost up to 19 s over a race) but is the field degradation expected at this
+     circuit (DEG_PRIOR: previous editions of the GP, tools/histrace.py). Real net field degradation was 0.13-0.15 s/lap/lap at Sepang and 0.02 at Lusail. */
 function raceEst(A, spr) {
-  const st = A.stP; let pool = st.filter(s => s.len >= 9), mode = 'long';
-  if (!pool.length) { pool = st.filter(s => s.len >= 4); mode = 'short'; }
+  const st = A.stP; let pool = st.filter(s => s.len >= 4), mode = 'short';
   if (!pool.length) { pool = st.filter(s => s.len >= 3); mode = 'mini'; }
   let e;
   if (pool.length) {
-    const s = pool.reduce((m, x) => (x.len > m.len || (x.len === m.len && x.med < m.med)) ? x : m, pool[0]);
-    const b = shrink(s.b, s.len, 0.03, 6);
+    const s = pool.reduce((m, x) => x.med < m.med ? x : m, pool[0]);
+    const b = DEG_PRIOR;
     e = { a: s.med - b * (s.len - 1) / 2 + CAL.race[mode], b, sd: s.sd, len: s.len, mode, comp: s.comp, compF: s.compF };
   } else e = { a: A.bestN + CAL.race.best, b: 0.03, sd: 0.2, len: 0, mode: 'best', comp: A.bestTyre && A.bestTyre.r, compF: A.bestTyre && A.bestTyre.f };
   if (spr && spr.len >= 6) {   // blend with real Sprint pace once available

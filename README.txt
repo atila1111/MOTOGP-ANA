@@ -101,6 +101,7 @@ Mas documentacion en el propio repositorio:
      descargar.py         baja los PDF y los datos de la API de motogp.com
      capturas.py          (opcional) regenera las capturas de docs/capturas/
      calibrar.py/.js      (opcional, Node.js) banco de pruebas para recalibrar el modelo con las carreras reales
+     histrace.py          degradacion real de las carreras pasadas (prior del modelo); lo lanza el boton de recuperar
      fotos.py             descarga la foto de cada piloto (API de motogp.com)
      fotos/<numero>.webp  fotos ya descargadas (se incrustan en index.html)
      pipeline.py          lee los PDF, simula y construye los datos
@@ -441,10 +442,22 @@ calibrar con suficientes fines de semana reales: tomalas como orientativas.
 
 11. VERSIONES Y FUNCIONALIDADES NUEVAS
 ---------------------------------------------------------------------
-Version actual: 0.8.1. La lista completa de funcionalidades esta en
+Version actual: 0.9.0. La lista completa de funcionalidades esta en
 README.md; esto es lo que aporto cada version (mismo contenido que
 CHANGELOG.md, que es el que se mantiene primero).
 Cada version anade funcionalidades sobre la anterior. La version actual se ve en la cabecera del panel (debajo del nombre) y en VERSION de tools/pipeline.py.
+
+Version 0.9.0 - 8 nov 2026 - Recalibracion con Malasia y Catar
+--------------------------------------------------------------
+
+  - El modelo de ritmo de carrera se recalibra con las dos carreras reales (banco tools/calibrar.py): error de ritmo de 0,77 a 0,57 s/vuelta, correlacion de posiciones de 0,56 a 0,75 y podio acertado de 1,25 a 2,0 de 3 (mejora en las dos carreras). En Catar, tras la Sprint, ya sale Bezzecchi primero y Marquez segundo, como fue la carrera.
+  - Tanda elegida: la mas rapida de 4 o mas vueltas, en vez de la mas larga (la mas larga llevaba mas combustible o era de otro programa y hacia parecer a Bezzecchi 1 s/vuelta mas lento).
+  - Degradacion: ya no se lee de la pendiente de las tandas de practica (4-6 vueltas, ruido de +-0,3 que, con tope en 0,09, costaba hasta 19 s en una carrera). Se usa la degradacion esperada del campo en ese circuito, medida en 35 carreras en seco de 2025 y 2026 (tools/histrace.py, API/degradacion.json): mediana de las ediciones anteriores del GP, o de todas las carreras anteriores si no hay. Medido: 0,13-0,15 s/vuelta por vuelta en Sepang y 0,02 en Lusail; la temperatura de pista por si sola no la explica.
+  - tools/histrace.py baja el Analysis de la Carrera de cada GP y calcula la degradacion del campo; se ejecuta solo al pulsar "Recuperar resultados MotoGP" (solo descarga las carreras nuevas).
+  - El banco de calibracion tambien prueba el origen de la degradacion y muestra el efecto medio de cada ajuste.
+  - Correccion: los PDF de Lusail con una linea "Updated" antes del titulo (el Analysis de la carrera) no se reconocian.
+  - Correccion: las estadisticas de pilotos que no corrieron la ultima carrera (bajas, sustitutos) se conservan en lugar de borrarse.
+  - El panel del simulador indica la degradacion del campo que usa y su origen.
 
 Version 0.8.1 - 8 nov 2026 - Banco de pruebas de calibracion
 ------------------------------------------------------------

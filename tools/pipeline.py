@@ -30,7 +30,7 @@ PDF_OVERRIDE = os.environ.get('MOTOGP_PDF_DIR')            # test hook: replaces
 SESSION_DIRS = ['FP1', 'PR', 'FP2', 'Q1', 'Q2', 'SPRINT', 'RACE']      # inner folders prepared for every circuit
 # One entry per circuit folder in the project root. Lap counts are only the defaults used while the Sprint/Race are simulated
 # (a real Sprint/Race replaces them); lengths are the published track lengths. `salt` varies the seeded simulation per circuit.
-VERSION = '0.8.1'                                          # keep in step with CHANGELOG.md
+VERSION = '0.9.0'                                          # keep in step with CHANGELOG.md
 CIRCUITS = [
     {'id': 'malasya', 'folder': 'MALASYA', 'flag': '🇲🇾', 'short': 'Sepang', 'name': 'Petronas Sepang International Circuit', 'gp': 'Gran Premio de Malasia',
      'length': 5.543, 'sprintLaps': 10, 'raceLaps': 20, 'record': {'t': 116.337, 'who': 'F. Bagnaia', 'year': 2024}, 'weather': None, 'salt': 0, 'api': 'MAL',
@@ -127,6 +127,22 @@ def build_wup(secs, real_laps=None):
             d['conf'] = 'alta' if d.get('clean', 0) >= 4 else 'media' if d.get('clean', 0) == 3 else 'baja'
     return o
 
+def deg_prior(circ, A):
+    """Field degradation (net of fuel burn, s per lap per lap) expected in the race of this circuit, from API/degradacion.json (tools/histrace.py): the median of the
+    previous editions at the same circuit, else of every earlier race of the season range. Never uses the weekend being analysed."""
+    races = _jl('degradacion.json') or []
+    start = event_start(circ, A); code = circ.get('api')
+    cal = {e['code']: e['start'][:10] for e in ((A.get('temporada') or {}).get('calendar') or [])}
+    yr = int(start[:4]) if start else None
+    def before(r):                                             # played before this GP
+        if yr is None: return True
+        return r['year'] < yr or (r['year'] == yr and r['code'] != code and cal.get(r['code'], '9999') < start[:10])
+    same = [r for r in races if r['code'] == code and before(r) and r['year'] < (yr or 9999)]
+    if same: return {'value': round(st.median(r['deg'] for r in same), 4), 'src': 'ediciones anteriores de ' + code + ' (' + ', '.join(str(r['year']) for r in same) + ')', 'n': len(same)}
+    other = [r for r in races if before(r)]
+    if len(other) >= 5: return {'value': round(st.median(r['deg'] for r in other), 4), 'src': 'mediana de ' + str(len(other)) + ' carreras en seco anteriores', 'n': len(other)}
+    return None
+
 def short_name(full):
     parts = (full or '').split()
     return f'{parts[0][0]}. {" ".join(parts[1:])}' if len(parts) > 1 else full
@@ -188,7 +204,7 @@ def detect_text(txt):
     """Title of ONE page -> (sid, kind). kind None when the page is not a recognised report (or is an analysis continuation page)."""
     up = (txt or '').upper()
     if 'GRAND PRIX' not in up: return None, None
-    first = next((l.strip() for l in up.split(chr(10)) if len(l.strip()) > 5), '')            # Lusail's PDFs start with stray icon labels ("i2", "i3") before the title
+    first = next((l.strip() for l in up.split(chr(10)) if len(l.strip()) > 5 and l.strip() != 'UPDATED'), '')      # Lusail's PDFs start with stray labels ("i2", "i3", "Updated") before the title
     if any(k in first for k in IGNORED_TITLES): return None, None
     kind = next((k for key, k in TITLE_KINDS if key in first), None)
     if kind is None: return None, None
@@ -936,7 +952,7 @@ def build_circuit(circ):
         grids[gs] = g
     absent = [n for n in nums if grids and not any(n in g['order'] for g in grids.values())]
     if absent: log('  No toman la salida: ' + ', '.join(f'#{n}' for n in absent))
-    A = api_bundle(); hist = api_history(circ)
+    A = api_bundle(); hist = api_history(circ); degp = deg_prior(circ, A)
     outs = load_outs(circ); out_r = [n for n in outs.get('RAC', []) if n in nums] if 'RAC' not in real_sessions else []
     wup = build_wup(found.get('WUP'), real_laps)
     if out_r: log('  Bajas en la Carrera simulada: ' + ', '.join(f'#{n}' for n in out_r))
@@ -1024,7 +1040,7 @@ def build_circuit(circ):
         if gs == 'SPR' and 'SPR' in real_sessions: real_sessions['SPR']['official']['docs']['grid'] = g['doc']
     return {
         'circuit': cinfo,
-        'outs': {'RAC': out_r}, 'wup': wup, 'outsSuggest': suggest,
+        'outs': {'RAC': out_r}, 'wup': wup, 'outsSuggest': suggest, 'degPrior': degp,
         'riders': riders, 'sessions': sessions, 'sim': simulated_overrides, 'grids': grids, 'event': {k: v for k, v in event.items() if k in ('entry', 'bio', 'evtspd', 'outOfEvent')},
         'meta': {'real': [s for s in SIDS if s in real_sessions], 'built': time.strftime('%Y-%m-%d %H:%M:%S'),
                  'sources': {s: real_sessions[s]['source'] for s in real_sessions},

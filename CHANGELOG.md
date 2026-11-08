@@ -2,6 +2,17 @@
 
 Cada versión añade funcionalidades sobre la anterior. La versión actual se ve en la cabecera del panel (debajo del nombre) y en `VERSION` de `tools/pipeline.py`.
 
+## 0.9.0 · 8 nov 2026 · Recalibración con Malasia y Catar
+
+- **El modelo de ritmo de carrera se recalibra con las dos carreras reales** (banco `tools/calibrar.py`): error de ritmo de 0,77 a 0,57 s/vuelta, correlación de posiciones de 0,56 a 0,75 y podio acertado de 1,25 a 2,0 de 3 (mejora en las dos carreras). En Catar, tras la Sprint, ya sale Bezzecchi primero y Márquez segundo, como fue la carrera.
+- **Tanda elegida:** la más rápida de 4 o más vueltas, en vez de la más larga (la más larga llevaba más combustible o era de otro programa y hacía parecer a Bezzecchi 1 s/vuelta más lento).
+- **Degradación:** ya no se lee de la pendiente de las tandas de práctica (4–6 vueltas, ruido de ±0,3 que, tope en 0,09, costaba hasta 19 s en una carrera). Se usa la **degradación esperada del campo en ese circuito**, medida en 35 carreras en seco de 2025 y 2026 (`tools/histrace.py`, `API/degradacion.json`): mediana de las ediciones anteriores del GP, o de todas las carreras anteriores si no hay. Medido: 0,13–0,15 s/vuelta por vuelta en Sepang y 0,02 en Lusail; la temperatura de pista por sí sola no la explica.
+- **`tools/histrace.py`:** baja el Analysis de la Carrera de cada GP y calcula la degradación del campo; se ejecuta solo al pulsar «Recuperar resultados MotoGP» (solo descarga las carreras nuevas).
+- **Banco de calibración:** ahora también prueba el origen de la degradación y muestra el efecto medio de cada ajuste.
+- **Corrección:** los PDF de Lusail con una línea «Updated» antes del título (el Analysis de la carrera) no se reconocían.
+- **Corrección:** las estadísticas de pilotos que no corrieron la última carrera (bajas, sustitutos) se conservan en lugar de borrarse.
+- El panel del simulador indica la degradación del campo que usa y su origen.
+
 ## 0.8.1 · 8 nov 2026 · Banco de pruebas de calibración
 
 - **`tools/calibrar.py` y `tools/calibrar.js`** (herramienta de mantenimiento, necesita Node.js): prueba variantes del modelo de ritmo de carrera (tanda elegida —la más larga o la más rápida—, peso de la Sprint, offset de tanda corta, prior del Mundial) contra todas las Carreras reales del repositorio y compara el error de ritmo, la correlación de posiciones y el podio acertado. No cambia nada por sí solo: sirve para decidir con datos, y solo debe adoptarse lo que mejore en todas las carreras.

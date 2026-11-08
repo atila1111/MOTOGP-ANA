@@ -95,11 +95,12 @@ tools/                lectura de PDF, motor de predicción, interfaz, servidor, 
 API/                  datos de la API pública: Mundial, pilotos, histórico por circuito, última actualización
 MALASYA/ …            un directorio por circuito, con una carpeta por sesión
 docs/capturas/        capturas de pantalla de este README
+tools/calibrar.py     (opcional) banco de pruebas para recalibrar el modelo con las carreras reales
 ```
 
 ## Versiones
 
-La versión actual es la **0.8.0**. Qué trae cada una está en [`CHANGELOG.md`](CHANGELOG.md).
+La versión actual es la **0.8.1**. Qué trae cada una está en [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Aviso
 

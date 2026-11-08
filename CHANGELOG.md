@@ -2,6 +2,11 @@
 
 Cada versión añade funcionalidades sobre la anterior. La versión actual se ve en la cabecera del panel (debajo del nombre) y en `VERSION` de `tools/pipeline.py`.
 
+## 0.8.1 · 8 nov 2026 · Banco de pruebas de calibración
+
+- **`tools/calibrar.py` y `tools/calibrar.js`** (herramienta de mantenimiento, necesita Node.js): prueba variantes del modelo de ritmo de carrera (tanda elegida —la más larga o la más rápida—, peso de la Sprint, offset de tanda corta, prior del Mundial) contra todas las Carreras reales del repositorio y compara el error de ritmo, la correlación de posiciones y el podio acertado. No cambia nada por sí solo: sirve para decidir con datos, y solo debe adoptarse lo que mejore en todas las carreras.
+- Motivo: el modelo daba un 2 % de victoria a Bezzecchi en Catar porque estimaba su ritmo con su tanda de práctica más larga y no con la más rápida, y sin Sprint propia; una variante cambia al favorito, así que hace falta contrastarla con más de una carrera.
+
 ## 0.8.0 · 8 nov 2026 · Bajas del domingo y WUP
 
 - **Panel «Bajas y WUP del domingo»** en el simulador de carrera: marca los pilotos que no toman la salida y se recalcula la Carrera simulada (Top 3 de Domingo, simulador, comparativas) sin ellos; los que van detrás suben un puesto en la parrilla. Se guarda en `<CIRCUITO>/bajas.json` (con el servidor en marcha; sin él, se puede escribir a mano `{"RAC": [63]}`).

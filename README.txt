@@ -100,6 +100,7 @@ Mas documentacion en el propio repositorio:
    tools/
      descargar.py         baja los PDF y los datos de la API de motogp.com
      capturas.py          (opcional) regenera las capturas de docs/capturas/
+     calibrar.py/.js      (opcional, Node.js) banco de pruebas para recalibrar el modelo con las carreras reales
      fotos.py             descarga la foto de cada piloto (API de motogp.com)
      fotos/<numero>.webp  fotos ya descargadas (se incrustan en index.html)
      pipeline.py          lee los PDF, simula y construye los datos
@@ -440,10 +441,16 @@ calibrar con suficientes fines de semana reales: tomalas como orientativas.
 
 11. VERSIONES Y FUNCIONALIDADES NUEVAS
 ---------------------------------------------------------------------
-Version actual: 0.8.0. La lista completa de funcionalidades esta en
+Version actual: 0.8.1. La lista completa de funcionalidades esta en
 README.md; esto es lo que aporto cada version (mismo contenido que
 CHANGELOG.md, que es el que se mantiene primero).
 Cada version anade funcionalidades sobre la anterior. La version actual se ve en la cabecera del panel (debajo del nombre) y en VERSION de tools/pipeline.py.
+
+Version 0.8.1 - 8 nov 2026 - Banco de pruebas de calibracion
+------------------------------------------------------------
+
+  - tools/calibrar.py y tools/calibrar.js (herramienta de mantenimiento, necesita Node.js): prueba variantes del modelo de ritmo de carrera (tanda elegida, la mas larga o la mas rapida; peso de la Sprint; offset de tanda corta; prior del Mundial) contra todas las Carreras reales del repositorio y compara el error de ritmo, la correlacion de posiciones y el podio acertado. No cambia nada por si solo: solo debe adoptarse lo que mejore en todas las carreras.
+  - Motivo: el modelo daba un 2% de victoria a Bezzecchi en Catar porque estimaba su ritmo con su tanda de practica mas larga y no con la mas rapida, y sin Sprint propia; una variante cambia al favorito.
 
 Version 0.8.0 - 8 nov 2026 - Bajas del domingo y WUP
 ----------------------------------------------------

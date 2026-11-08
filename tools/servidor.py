@@ -18,7 +18,7 @@ LOCK = threading.Lock()
 CACHE = {'sig': None, 'html': b'', 'error': None}
 
 def signature():
-    files = pipeline.all_pdfs() + list(pipeline.API_DIR.glob('*.json')) + [c_dir / 'evento.json' for c_dir in (pipeline.circuit_dir(c) for c in pipeline.CIRCUITS)] + [pipeline.TOOLS / n for n in ('engine.js', 'ui.jsx', 'shell.jsx', 'template.html', 'pipeline.py')] + list(pipeline.PHOTO_DIR.glob('*.webp'))
+    files = pipeline.all_pdfs() + list(pipeline.API_DIR.glob('*.json')) + [pipeline.circuit_dir(c) / 'bajas.json' for c in pipeline.CIRCUITS] + [c_dir / 'evento.json' for c_dir in (pipeline.circuit_dir(c) for c in pipeline.CIRCUITS)] + [pipeline.TOOLS / n for n in ('engine.js', 'ui.jsx', 'shell.jsx', 'template.html', 'pipeline.py')] + list(pipeline.PHOTO_DIR.glob('*.webp'))
     return tuple(sorted((str(p), p.stat().st_mtime_ns) for p in files if p.exists()))
 
 def current_html():
@@ -59,6 +59,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
     def do_POST(self):
         u = urlparse(self.path)
+        if u.path == '/api/bajas':                                    # riders that will not start the Sunday race -> <CIRCUITO>/bajas.json
+            try:
+                cid = (parse_qs(u.query).get('circuito') or [None])[0]; circ = next(c for c in pipeline.CIRCUITS if c['id'] == cid)
+                body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)) or '{}')
+                outs = sorted({int(n) for n in body.get('RAC', [])}); f = pipeline.circuit_dir(circ) / 'bajas.json'
+                if outs: f.write_text(json.dumps({'RAC': outs}), encoding='utf8')
+                elif f.exists(): f.unlink()
+                self.send_json({'ok': True, 'RAC': outs})
+            except BaseException as e: self.send_json({'ok': False, 'error': str(e)})
+            return
         if u.path in ('/api/descargar', '/api/recuperar'):
             try: self.send_json(run_download((parse_qs(u.query).get('circuito') or [None])[0], datos=u.path == '/api/recuperar'))
             except BaseException as e: self.send_json({'nuevos': [], 'actualizados': [], 'iguales': 0, 'avisos': [], 'errores': [str(e)], 'eventos': [], 'datos': None, 'log': []}, 200)

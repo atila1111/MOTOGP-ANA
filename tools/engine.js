@@ -30,6 +30,7 @@ const START_LOSS = 2.4;                               // standing-start lap-1 lo
 const R = DATA.riders;
 const RIDER = Object.fromEntries(R.map(r => [r.num, r]));
 const NUMS = R.map(r => r.num);
+const OUT_RAC = new Set((DATA.outs && DATA.outs.RAC) || []);     // riders that will not start the (still simulated) Sunday race: <CIRCUITO>/bajas.json
 
 const median = a => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 /* weak prior from the Entry/Rider Statistics PDFs: position in the 2025 championship. Practice stints are short and noisy, so Sprint/Race pace is nudged
@@ -311,7 +312,10 @@ function predictions(mid) {
   const gridPos = {};
   const polePos = Object.fromEntries(pole.rows.map(r => [r.num, r.pos]));
   const gridOf = g => n => { const i = g ? g.indexOf(n) : -1; return i >= 0 ? i + 1 : (polePos[n] || 12); };
-  const gpS = gridOf(ctx.gridS), gpR = gridOf(ctx.gridR);
+  const gpS = gridOf(ctx.gridS);
+  const polePosR = {}; pole.rows.filter(r => !OUT_RAC.has(r.num)).forEach((r, i) => { polePosR[r.num] = i + 1; });      // the riders behind a rider who is out move up one place
+  const gR = ctx.gridR ? ctx.gridR.filter(n => !OUT_RAC.has(n)) : null;
+  const gpR = n => { const i = gR ? gR.indexOf(n) : -1; return i >= 0 ? i + 1 : (polePosR[n] || 12); };
   const starter = (g, off) => n => !off || g.includes(n);                  // an official grid also tells who does NOT start (injured / absent riders)
   const vs = NUMS.filter(hasData).map(n => A[n].vtop5).filter(Boolean), vmed = median(vs);
   // ---- SPRINT
@@ -333,7 +337,7 @@ function predictions(mid) {
   const race = { id: 'RAC', label: 'Carrera', known: racKnown, rows: [], gridOff: ctx.gridOff.RAC };
   if (racKnown) race.rows = SD.RAC.results.map(r => Object.assign({ num: r.num, pos: r.pos, T: r.time, gap: r.gap, status: r.status, conf: 100 }, realRowInfo('RAC', r.num)));
   else {
-    race.rows = NUMS.filter(hasData).filter(starter(ctx.gridR, ctx.gridOff.RAC)).map(n => {
+    race.rows = NUMS.filter(hasData).filter(starter(ctx.gridR, ctx.gridOff.RAC)).filter(n => !OUT_RAC.has(n)).map(n => {
       let sprS = null;
       if (sprKnown && !incidentsOf(SD, 'SPR', n).length) { const s = realRaceStint('SPR', n); if (s) sprS = { a: s.a, b: s.b, len: s.len }; }   // a Sprint with a pit stop / crash says nothing about that rider's race pace
       const e = raceEst(A[n], sprS), pen = 0.06 * (gpR(n) - 1) - 0.003 * ((A[n].vtop5 || vmed) - vmed) * (N2 - 1);
@@ -496,7 +500,8 @@ function simulateRaceMC(rows, P, N0) {
   }
   const riders = R.map((r, i) => {
     const ps = posList[i].filter(x => x != null).sort((a, b) => a - b), q = f => ps.length ? ps[Math.min(ps.length - 1, Math.floor(f * ps.length))] : null;
-    return { num: r.num, grid: r.grid, win: wins[i] / P.runs, pod: pods[i] / P.runs, dnf: dnfs[i] / P.runs, mean: ps.length ? posSum[i] / ps.length : null, p10: q(0.1), p50: q(0.5), p90: q(0.9), exp: 0 };
+    return { num: r.num, grid: r.grid, win: wins[i] / P.runs, pod: pods[i] / P.runs, dnf: dnfs[i] / P.runs, mean: ps.length ? posSum[i] / ps.length : null, p10: q(0.1), p50: q(0.5), p90: q(0.9), exp: 0,
+      dist: (() => { const d = new Array(nR).fill(0); posList[i].forEach(p => { if (p != null) d[p - 1]++; }); return d.map(x => x / P.runs); })() };       // share of the runs that ended in each place
   });
   // representative run: the one whose finishing order is closest to the mean positions
   const meanPos = riders.map(r => r.mean == null ? nR : r.mean); let best = 0, bd = Infinity;

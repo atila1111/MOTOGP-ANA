@@ -287,7 +287,7 @@ function Resumen({ snap, prev, M, sel, goPace, goSim }) {
   ['Velocidad punta', allV.v.toFixed(1) + ' km/h', mm(allV.n)], ['Vueltas válidas', `${clean}/${tot}`, `${Math.round(100 * clean / tot)}% tras depuración`]];
   return <div className="space-y-4">
     {M.sessions.includes('RAC') && !SD.RAC.real && <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-3 text-sm text-sky-100 flex flex-wrap items-center gap-3">
-      <span><b>La Carrera aún no tiene PDFs en {CIRC.folder}/RACE/:</b> lo que ves de Domingo es una simulación. Ajusta pista, meteo y condición (seco, mojado o flag-to-flag) en el simulador.</span>
+      <span><b>La Carrera aún no tiene PDFs en {CIRC.folder}/RACE/:</b> lo que ves de Domingo es una simulación{DATA.outs && DATA.outs.RAC && DATA.outs.RAC.length ? <> <b>sin {DATA.outs.RAC.map(n => mm(n)).join(', ')} (baja)</b></> : ''}. Ajusta pista, meteo y condición (seco, mojado o flag-to-flag) en el simulador.</span>
       <button onClick={goSim} className="ml-auto px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold">Abrir simulador de carrera →</button></div>}
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {K.map(([a, b, c]) => <div key={a} className="rounded-lg border border-[#1f2630] bg-[#10141a] px-4 py-3">
@@ -300,6 +300,7 @@ function Resumen({ snap, prev, M, sel, goPace, goSim }) {
     <CircuitCard M={M} />
     <HistoricoPanel />
     <PalmaresPanel M={M} sel={sel} />
+    <WupPanel />
     <DocsPanel M={M} />
   </div>;
 }
@@ -674,6 +675,65 @@ function UploadHelp() {
 }
 /* ---------- TAB: Simulador de carrera ---------- */
 const NUMK = ['laps', 'runs', 'seed', 'switchLap', 'pitLoss', 'wetPen', 'wetSd', 'wetNoise', 'crashPct', 'wetCrashMult', 'kPace', 'kDeg', 'paceSd', 'ground', 'air', 'hum', 'hour'];
+/* ---------- bajas del domingo (no toman la salida) + WUP ---------- */
+function BajasPanel() {
+  const outs = (DATA.outs && DATA.outs.RAC) || [], sug = (DATA.outsSuggest || []).filter(x => RIDER[x.num]), wup = DATA.wup;
+  const [draft, setDraft] = useState(outs), [srv, setSrv] = useState(false), [msg, setMsg] = useState(null), [busy, setBusy] = useState(false);
+  useEffect(() => { fetch('/api/estado').then(r => r.ok ? r.json() : null).then(j => setSrv(!!(j && j.servidor))).catch(() => {}); }, []);
+  if (SD.RAC.real) return null;
+  const key = a => [...a].sort((x, y) => x - y).join(','), dirty = key(draft) !== key(outs);
+  const toggle = n => setDraft(d => d.includes(n) ? d.filter(x => x !== n) : [...d, n]);
+  const save = async () => {
+    setBusy(true); setMsg('Guardando y recalculando…');
+    try { const j = await (await fetch('/api/bajas?circuito=' + CUR, { method: 'POST', body: JSON.stringify({ RAC: draft }) })).json(); if (!j.ok) throw new Error(j.error); location.reload(); }
+    catch (e) { setBusy(false); setMsg('No se pudo guardar: ' + e.message); }
+  };
+  return <Panel title="Bajas y WUP del domingo" sess="RACE · SIM" right={<span className="text-[11px] text-slate-500">una baja sale de la parrilla y los de atrás suben un puesto</span>}>
+    <div className="space-y-3">
+      <div><div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">No toman la salida (marca los pilotos que están fuera)</div>
+        <div className="flex flex-wrap gap-1.5">{NUMS.map(n => { const on = draft.includes(n); return <button key={n} onClick={() => toggle(n)} className={'inline-flex items-center gap-1.5 pl-0.5 pr-2 py-0.5 rounded border text-[11px] font-semibold transition ' + (on ? 'bg-red-600 border-red-500 text-white line-through' : 'border-[#2a313c] text-slate-300 hover:border-slate-500')}><Avatar n={n} size={20} />{mm(n)}</button>; })}</div></div>
+      {sug.length > 0 && <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 flex flex-wrap items-center gap-2">
+        <span><b>Posible baja:</b> {sug.map(x => `${mm(x.num)} (#${x.num}) — ${x.why}`).join(' · ')}.</span>
+        <button onClick={() => setDraft(d => [...new Set([...d, ...sug.map(x => x.num)])])} className="px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white font-bold">Marcar como baja</button></div>}
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={save} disabled={!srv || !dirty || busy} className={'px-3 py-1.5 rounded text-xs font-bold ' + (srv && dirty && !busy ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-[#1a2029] text-slate-500 cursor-not-allowed')}>Guardar bajas y recalcular</button>
+        {outs.length > 0 && <span className="text-[11px] text-slate-400">Aplicadas ahora: <b className="text-slate-200">{outs.map(n => mm(n)).join(', ')}</b> (guardadas en {CIRC.folder}/bajas.json)</span>}
+        {!srv && <span className="text-[11px] text-slate-500">Sin servidor no se puede guardar desde aquí: crea {CIRC.folder}/bajas.json con {'{"RAC": [63]}'} y reconstruye.</span>}
+        {msg && <span className="text-[11px] text-sky-300">{msg}</span>}</div>
+      {wup && <div className="text-[11px] text-slate-500">El WUP del domingo tiene su propio panel (pestaña Resumen): «WUP del domingo · índice de preparación».</div>}
+    </div></Panel>;
+}
+
+/* ---------- WUP del domingo: quién rodó, qué neumático, cómo viene respecto al sábado ---------- */
+function WupPanel() {
+  const w = DATA.wup;
+  if (!w) return null;
+  const real = SD.RAC.real ? Object.fromEntries(SD.RAC.results.map(r => [r.num, r])) : null;
+  const rows = Object.entries(w.riders).filter(([n]) => RIDER[n]).map(([n, r]) => Object.assign({ num: +n }, r)).sort((a, b) => a.pos - b.pos);
+  const lab = { 'Mejora': 'text-emerald-300 border-emerald-500/40', 'Investigar': 'text-amber-300 border-amber-500/40', 'Consistente': 'text-slate-300 border-slate-500/40', 'Pocas vueltas': 'text-slate-500 border-slate-700' };
+  const th = (l, t) => <th className="pr-3 py-1.5" title={t}>{l}</th>;
+  const f = (x, d = 3, sg = true) => x == null ? '—' : (sg && x > 0 ? '+' : '') + x.toFixed(d);
+  return <Panel title="WUP del domingo · índice de preparación" sess="WUP" right={<span className="text-[11px] text-slate-500">{rows.length} pilotos{w.cond && w.cond.ground ? ` · pista ${w.cond.ground}° · aire ${w.cond.air}° · hum. ${w.cond.hum}%` : ''}</span>}>
+    <div className="overflow-x-auto"><table className="w-full text-xs tabular-nums">
+      <thead><tr className="text-left text-[10px] uppercase tracking-wider text-slate-500">{th('#')}{th('Piloto')}{th('Mejor', 'Mejor vuelta del WUP')}{th('Gap', 'Segundos sobre el mejor WUP (entre los pilotos con datos de ambas sesiones)')}{th('Vtas', 'Vueltas dadas / válidas (sin out-lap, boxes, anuladas ni >107 %)')}{th('σ', 'Desviación típica de las vueltas válidas (solo con 3 o más)')}{th('Neum. D/T', 'Neumático delantero / trasero probado')}
+        {w.ref && th('Evol. ' + w.ref, 'Gap WUP − gap en ' + w.ref + ': <0 = mejora respecto al sábado, ya sin la evolución de pista común a todos')}{w.ref && th('Puestos', 'Puesto en ' + w.ref + ' menos puesto en el WUP (+ = sube)')}{w.ref && th('Índice', 'Experimental, 0–100: 50 % ritmo, 30 % evolución respecto al sábado, 20 % consistencia')}{w.ref && th('Lectura')}{real && th('Carrera', 'Posición final real')}</tr></thead>
+      <tbody>{rows.map(r => <tr key={r.num} className="border-t border-[#1a2029]">
+        <td className="pr-3 py-1 text-slate-400">{r.pos}</td>
+        <td className="pr-3"><span className="inline-flex items-center gap-1.5"><Avatar n={r.num} size={20} /><span className="text-slate-200 font-semibold">{mm(r.num)}</span></span></td>
+        <td className="pr-3 text-slate-200">{fmtLap(r.best)}</td><td className="pr-3 text-slate-400">{r.gap != null ? f(r.gap) : '—'}</td>
+        <td className="pr-3 text-slate-400">{r.laps || '—'}<span className="text-slate-600">/{r.clean != null ? r.clean : '—'}</span></td><td className="pr-3 text-slate-400">{r.sd != null ? r.sd.toFixed(2) : '—'}</td>
+        <td className="pr-3"><Tyre t={r.tyre} /></td>
+        {w.ref && <td className={'pr-3 ' + (r.delta == null ? 'text-slate-600' : r.delta < -0.2 ? 'text-emerald-300' : r.delta > 0.4 ? 'text-amber-300' : 'text-slate-300')}>{r.delta != null ? f(r.delta) : '—'}</td>}
+        {w.ref && <td className="pr-3 text-slate-300">{r.dRank != null ? (r.dRank > 0 ? '▲' : r.dRank < 0 ? '▼' : '=') + Math.abs(r.dRank) : '—'}</td>}
+        {w.ref && <td className="pr-3 text-slate-100 font-bold">{r.score != null ? r.score.toFixed(0) : '—'}{r.conf && r.conf !== 'alta' ? <span className="text-slate-600 font-normal" title="Pocas vueltas válidas: poca fiabilidad"> ({r.conf})</span> : null}</td>}
+        {w.ref && <td className="pr-3">{r.label ? <span className={'px-1.5 py-0.5 rounded border text-[10px] font-bold ' + (lab[r.label] || '')}>{r.label}</span> : '—'}</td>}
+        {real && <td className="pr-3 text-slate-300 font-bold">{real[r.num] ? (real[r.num].status === 'FIN' ? real[r.num].pos + 'º' : 'DNF') : '—'}</td>}</tr>)}</tbody></table></div>
+    <div className="mt-2 text-[11px] text-slate-500 space-y-1">
+      <p>El WUP son 4–6 vueltas sin carga de carrera y cada equipo hace su programa: <b className="text-slate-400">no entra en la predicción</b>. Sirve para confirmar quién rueda, qué neumático prueba y si alguien llega mejor o peor que el sábado (la evolución compara el gap al mejor de cada sesión, así que la mejora de pista común a todos se cancela).</p>
+      <p>Contraste con la carrera de Malasia 2026 (14 pilotos con 3 o más vueltas válidas): el puesto en el WUP correlaciona con el resultado (ρ de Spearman 0,80), igual que el puesto en FP2 (0,81), así que el WUP no añade información que no diera ya el sábado; el índice compuesto sale peor (0,37) y la evolución respecto al sábado apenas explica los errores de la predicción (ρ 0,2, con 14 pilotos no es concluyente). Por eso el índice es <b className="text-slate-400">experimental e informativo</b> y se revisará con más carreras.</p></div>
+  </Panel>;
+}
+
 function Simulador({ M, sel }) {
   const c = DATA.circuit, N0 = c.raceLaps, fc = c.forecast;
   const base = useMemo(() => raceBase(M.id), [M.id]), ref = useMemo(raceRefCond, []);
@@ -691,9 +751,11 @@ function Simulador({ M, sel }) {
       const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,shortwave_radiation&timezone=auto&start_date=${draft.date}&end_date=${draft.date}`)).json();
       if (j.error) throw new Error(j.reason || 'sin respuesta');
       const h = j.hourly, i = h.time.findIndex(t => +t.slice(11, 13) === +draft.hour); if (i < 0) throw new Error('hora no disponible');
-      const air = h.temperature_2m[i], hum = h.relative_humidity_2m[i], rain = h.precipitation_probability[i], sw = h.shortwave_radiation[i] || 0, ground = Math.round(air + Math.min(18, 0.019 * sw));
+      const air = h.temperature_2m[i], hum = h.relative_humidity_2m[i], rain = h.precipitation_probability[i], sw = h.shortwave_radiation[i] || 0, sp = SD.SPR && SD.SPR.real && SD.SPR.official && SD.SPR.official.cond;
+      const night = sp && sp.ground != null && sp.air != null && c.sprHour != null && Math.abs(c.sprHour - draft.hour) <= 1 && sw < 50;      // same hour as the real Sprint and no sun: the track keeps the heat of the day, as the Sprint measured
+      const ground = night ? Math.round(air + sp.ground - sp.air) : Math.round(air + Math.min(18, 0.019 * sw));
       setDraft(d => Object.assign({}, d, { air, hum, rain, ground }));
-      setMsg(`Open-Meteo ${draft.date} ${draft.hour}:00 → aire ${air}°, humedad ${hum}%, lluvia ${rain}%, radiación ${Math.round(sw)} W/m² → pista estimada ${ground}° (aire + 0,019·radiación). Pulsa «Simular».`);
+      setMsg(`Open-Meteo ${draft.date} ${draft.hour}:00 → aire ${air}°, humedad ${hum}%, lluvia ${rain}%, radiación ${Math.round(sw)} W/m² → pista estimada ${ground}° (${night ? `aire + ${sp.ground - sp.air}° de calor residual, como midió la Sprint a esa hora` : 'aire + 0,019·radiación'}). Pulsa «Simular».`);
     } catch (e) { setMsg('No se pudo cargar la previsión (' + e.message + '). Introduce los valores a mano.'); }
   };
   const fld = (k, l, step = 1, w = 'w-16') => <label className="flex items-center gap-1.5 text-[11px] text-slate-400">{l}<input type="number" step={step} value={draft[k]} onChange={e => set(k, e.target.value)} className={w + ' bg-[#0d1117] border border-[#2a313c] rounded px-1.5 py-1 text-xs text-slate-100 tabular-nums'} /></label>;
@@ -714,6 +776,7 @@ function Simulador({ M, sel }) {
   const hLapAvg = hLap.length ? hLap.reduce((a, b) => a + b, 0) / hLap.length : null;
   return <div className="space-y-4">
     {SD.RAC.real && <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">La Carrera ya es REAL: este simulador responde a «¿qué habría pasado con otra pista o meteo?» partiendo de la predicción previa a la carrera.</div>}
+    <BajasPanel />
     <Panel title="Parámetros de pista y carrera" sess={tag} right={<div className="flex gap-1.5"><Chip onClick={() => run()} active={dirty}>{dirty ? 'Simular (hay cambios)' : 'Simular'}</Chip><Chip onClick={() => run(Math.floor(Math.random() * 1e6))}>Otra semilla</Chip></div>}>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <div className="space-y-3">
@@ -758,6 +821,15 @@ function Simulador({ M, sel }) {
             <td className="pr-3 text-slate-200">{(100 * r.pod).toFixed(1)}</td><td className="pr-3">{r.mean != null ? r.mean.toFixed(1) : '—'}</td><td className="pr-3 text-slate-400">{r.p10 != null ? r.p10 + '–' + r.p90 : '—'}</td>
             <td className={r.dnf > 0.1 ? 'text-red-400' : 'text-slate-400'}>{(100 * r.dnf).toFixed(1)}</td></tr>)}</tbody></table></div>
         <p className="text-[11px] text-slate-500 mt-2">Δ pista {res.dT >= 0 ? '+' : ''}{res.dT}° respecto al ritmo de referencia → ritmo {res.dryAdj >= 0 ? '+' : ''}{res.dryAdj.toFixed(2)} s/vta, degradación ×{res.degMul.toFixed(2)}.</p>
+      </Panel>
+      <Panel title="Distribución por puesto" sess={tag} right={<span className="text-[11px] text-slate-500">% de las {P.runs} simulaciones que acaba en cada posición</span>}>
+        <div className="overflow-x-auto"><table className="text-[11px] tabular-nums">
+          <thead><tr className="text-slate-500"><th className="py-1 pr-3 text-left">Piloto</th>{res.riders.map((_, i) => <th key={i} className="px-1.5 font-semibold">P{i + 1}</th>)}<th className="px-1.5 font-semibold text-red-400" title="No termina">DNF</th></tr></thead>
+          <tbody>{res.riders.map(r => <tr key={r.num} className="border-t border-[#161c25]">
+            <td className="py-1 pr-3 whitespace-nowrap text-slate-200"><Dot n={r.num} /> <span className="ml-1">{mm(r.num)}</span> <span className="text-slate-600">sale {r.grid}º</span></td>
+            {r.dist.map((x, i) => <td key={i} className="px-1.5 py-1 text-center" style={{ background: x > 0 ? `rgba(239,68,68,${Math.min(0.85, 0.08 + 1.4 * x)})` : 'transparent', color: x >= 0.25 ? '#fff' : '#94a3b8' }} title={`P${i + 1}: ${(100 * x).toFixed(1)} %`}>{x === 0 ? '' : x < 0.005 ? '<1' : Math.round(100 * x)}</td>)}
+            <td className="px-1.5 text-center text-red-300">{r.dnf === 0 ? '' : r.dnf < 0.005 ? '<1' : Math.round(100 * r.dnf)}</td></tr>)}</tbody></table></div>
+        <p className="text-[11px] text-slate-500 mt-2">Cada fila suma 100 % con el abandono. Con {P.runs} simulaciones, una diferencia de 1–2 puntos entre celdas es ruido: sube «Simulaciones» en los supuestos para afinarlo.</p>
       </Panel>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Panel title="Probabilidad de victoria y podio (top 10)" sess={tag}><ChartCanvas type="bar" data={probData} options={probOpts} height={280} /></Panel>

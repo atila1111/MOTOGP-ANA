@@ -23,3 +23,6 @@ Thumbs.db
 
 # PDF de temporadas anteriores bajados con tools/descargar.py --año
 HISTORICO/
+
+# Bajas del domingo que marca el usuario en el panel (estado local de cada circuito)
+*/bajas.json

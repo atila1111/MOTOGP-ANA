@@ -64,7 +64,9 @@ Se abre en <http://localhost:8000>. Con el servidor en marcha, el botón **«Rec
 - Condición **seco, mojado o flag-to-flag** (seco→mojado o mojado→seco, vuelta del cambio, pérdida por cambio de moto).
 - Estado de pista editable: temperatura de pista, aire y humedad, o «como la Sprint», «media histórica» o previsión.
 - Previsión de **Open-Meteo** desde el navegador y enlace al Met Office.
-- Probabilidad de victoria y podio, posiciones y huecos vuelta a vuelta, caídas.
+- Probabilidad de victoria y podio, **distribución por puesto** (% de simulaciones que acaba en cada posición), posiciones y huecos vuelta a vuelta, caídas.
+- **WUP del domingo**: panel con el índice de preparación (ritmo, evolución respecto al sábado, consistencia, neumáticos); informativo, no entra en la predicción.
+- **Bajas del domingo:** marca los pilotos que no toman la salida y la Carrera simulada se recalcula sin ellos; el **WUP** propone posibles bajas y muestra neumáticos y pista de la mañana.
 
 ![Simulador de carrera](docs/capturas/06-simulador-de-carrera.png)
 
@@ -97,7 +99,7 @@ docs/capturas/        capturas de pantalla de este README
 
 ## Versiones
 
-La versión actual es la **0.7.1**. Qué trae cada una está en [`CHANGELOG.md`](CHANGELOG.md).
+La versión actual es la **0.8.0**. Qué trae cada una está en [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Aviso
 

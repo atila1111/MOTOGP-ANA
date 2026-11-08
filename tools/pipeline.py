@@ -30,7 +30,7 @@ PDF_OVERRIDE = os.environ.get('MOTOGP_PDF_DIR')            # test hook: replaces
 SESSION_DIRS = ['FP1', 'PR', 'FP2', 'Q1', 'Q2', 'SPRINT', 'RACE']      # inner folders prepared for every circuit
 # One entry per circuit folder in the project root. Lap counts are only the defaults used while the Sprint/Race are simulated
 # (a real Sprint/Race replaces them); lengths are the published track lengths. `salt` varies the seeded simulation per circuit.
-VERSION = '0.7.1'                                          # keep in step with CHANGELOG.md
+VERSION = '0.8.0'                                          # keep in step with CHANGELOG.md
 CIRCUITS = [
     {'id': 'malasya', 'folder': 'MALASYA', 'flag': '🇲🇾', 'short': 'Sepang', 'name': 'Petronas Sepang International Circuit', 'gp': 'Gran Premio de Malasia',
      'length': 5.543, 'sprintLaps': 10, 'raceLaps': 20, 'record': {'t': 116.337, 'who': 'F. Bagnaia', 'year': 2024}, 'weather': None, 'salt': 0, 'api': 'MAL',
@@ -72,6 +72,61 @@ def lap_secs(t):
     m = re.fullmatch(r"(\d+):(\d+\.\d+)", t or '')
     return int(m.group(1)) * 60 + float(m.group(2)) if m else None
 
+def load_outs(circ):
+    """<CIRCUITO>/bajas.json: riders that will not start a session ({"RAC": [63]}); written by the "Bajas" panel or by hand."""
+    try: j = json.loads((circuit_dir(circ) / 'bajas.json').read_text(encoding='utf8'))
+    except Exception: return {}
+    return {k: [int(n) for n in v] for k, v in j.items() if isinstance(v, list)}
+
+def wup_clean(laps):
+    """Push laps of the warm-up: no out-lap (first of a run), nothing crossing the pit lane, no cancelled lap, nothing above 107 % of the rider's best."""
+    L = sorted(laps, key=lambda l: l['n']); ok = [l for i, l in enumerate(L) if not l.get('x') and not l.get('p') and i > 0 and l['run'] == L[i - 1]['run']]
+    if not ok: return []
+    b = min(l['t'] for l in ok)
+    return [l for l in ok if l['t'] <= 1.07 * b]
+
+def build_wup(secs, real_laps=None):
+    """Sunday warm-up (not a simulated session): who rode, best time, laps, race-tyre choice, conditions, and the "WUP Performance Index" (informative, it does not feed the
+    prediction): pace against the field, evolution against Saturday (gap to the best lap of the session, so the track evolution common to everybody cancels), consistency."""
+    if not secs or 'class' not in secs: return None
+    txt = sec_text(secs['class']); o = {'cond': parse_cond(txt), 'riders': {}}
+    for n, r in parse_class_text(txt).items():
+        if r.get('best'): o['riders'][str(n)] = {'pos': r['pos'], 'best': r['best'], 'laps': r.get('laps'), 'vmax': r.get('vmax')}
+    clean = {}
+    if 'analysis' in secs:
+        try:
+            for n, v in parse_analysis(secs['analysis']).items():
+                d = o['riders'].setdefault(str(n), {})
+                ty = next(((l.get('f'), l.get('r')) for l in v['laps'] if l.get('r')), None)
+                if ty: d['tyre'] = {'f': ty[0], 'r': ty[1]}
+                cl = wup_clean(v['laps']); d['clean'] = len(cl)
+                if cl: clean[n] = [l['t'] for l in cl]; d['mean3'] = round(sum(sorted(clean[n])[:3]) / min(3, len(clean[n])), 3); d['sd'] = round(st.pstdev(clean[n]), 3) if len(clean[n]) >= 3 else None
+        except Exception as e: log(f'  ! WUP Analysis ilegible: {e}')
+    o['riders'] = {k: v for k, v in o['riders'].items() if v.get('best')}
+    if not o['riders']: return None
+    ref = next((x for x in ('FP2', 'PR') if real_laps and real_laps.get(x)), None)
+    sat = {}
+    if ref:
+        for n, ls in real_laps[ref].items():
+            t = [l['t'] for l in ls if not l.get('x')]
+            if t: sat[n] = min(t)
+    common = [int(k) for k in o['riders'] if int(k) in sat]
+    clamp01 = lambda x: max(0.0, min(100.0, x))
+    if len(common) >= 5:
+        bw, bs = min(o['riders'][str(n)]['best'] for n in common), min(sat[n] for n in common)
+        rw = {n: i + 1 for i, n in enumerate(sorted(common, key=lambda n: o['riders'][str(n)]['best']))}
+        rs = {n: i + 1 for i, n in enumerate(sorted(common, key=lambda n: sat[n]))}
+        o['ref'] = ref
+        for n in common:
+            d = o['riders'][str(n)]; gw, gs = d['best'] - bw, sat[n] - bs
+            d.update(gap=round(gw, 3), satGap=round(gs, 3), delta=round(gw - gs, 3), wupRank=rw[n], satRank=rs[n], dRank=rs[n] - rw[n])
+            P, E = clamp01(100 - 60 * gw), clamp01(50 - 40 * (gw - gs)); sd = d.get('sd')
+            w = [(0.5, P), (0.3, E)] + ([(0.2, clamp01(100 - 150 * sd))] if sd is not None else [])
+            d['score'] = round(sum(a * b for a, b in w) / sum(a for a, _ in w), 1)
+            d['label'] = 'Pocas vueltas' if d.get('clean', 0) < 2 else 'Mejora' if d['dRank'] >= 4 else 'Investigar' if d['dRank'] <= -4 else 'Consistente'
+            d['conf'] = 'alta' if d.get('clean', 0) >= 4 else 'media' if d.get('clean', 0) == 3 else 'baja'
+    return o
+
 def short_name(full):
     parts = (full or '').split()
     return f'{parts[0][0]}. {" ".join(parts[1:])}' if len(parts) > 1 else full
@@ -93,7 +148,7 @@ SIM_SIDS = ['FP2', 'Q1', 'Q2', 'SPR', 'RAC']
 SHORT = {93: 'M.MARQUEZ', 73: 'A.MARQUEZ', 63: 'BAGNAIA', 89: 'MARTIN', 37: 'ACOSTA', 72: 'BEZZECCHI', 79: 'OGURA', 49: 'DI GIANNANTONIO',
          21: 'MORBIDELLI', 33: 'BINDER', 23: 'BASTIANINI', 12: 'VIÑALES', 36: 'MIR', 5: 'ZARCO', 11: 'MOREIRA', 42: 'RINS', 27: 'LECUONA',
          43: 'MILLER', 10: 'MARINI', 20: 'QUARTARARO', 47: 'A.FERNANDEZ', 25: 'R.FERNANDEZ'}
-FOLDER_SID = {'FP1': 'FP1', 'PR': 'PR', 'FP2': 'FP2', 'Q1': 'Q1', 'Q2': 'Q2', 'SPR': 'SPR', 'SPRINT': 'SPR', 'RAC': 'RAC', 'RACE': 'RAC', 'CARRERA': 'RAC'}
+FOLDER_SID = {'FP1': 'FP1', 'PR': 'PR', 'FP2': 'FP2', 'Q1': 'Q1', 'Q2': 'Q2', 'SPR': 'SPR', 'SPRINT': 'SPR', 'RAC': 'RAC', 'RACE': 'RAC', 'CARRERA': 'RAC', 'WUP': 'WUP'}
 NATS = 'SPA|ITA|FRA|JPN|BRA|RSA|AUS|GBR|POR|GER|THA|TUR|ARG|MAL|INA|COL|CZE|FIN|NED|AUT|BEL|SUI|USA|CHN|IND|HUN'
 
 def log(*a): print(*a, file=sys.stderr)
@@ -146,6 +201,7 @@ def detect_text(txt):
     elif re.search(r'(?:QUALIFYING|Q)\s*(?:NR\.?)?\s*([12])\b', title): sid = 'Q' + re.search(r'(?:QUALIFYING|Q)\s*(?:NR\.?)?\s*([12])\b', title).group(1)
     elif 'SPRINT' in title or ('SPRINT' in first and kind == 'grid'): sid = 'SPR'
     elif re.search(r'\bRACE\b', title) and 'WARM' not in title: sid = 'RAC'
+    elif 'WARM' in title: sid = 'WUP'
     elif 'PRACTICE' in title: sid = 'PR'
     if kind == 'grid': sid = 'SPR' if 'SPRINT' in first else 'RAC'            # a starting grid belongs to the race it starts, whatever folder it sits in
     elif kind == 'qres': sid = 'Q2'
@@ -675,14 +731,16 @@ class Sim:
             prev_t = times; order = sorted([n for n in order if n not in dnf], key=lambda n: cum[n])
         return laps, cum, dnf
 
-    def race(self, sid, nlaps, grid, comps_c, deg_scale, evo, dnf_lap, tag, vbonus, seedtag):
+    def race(self, sid, nlaps, grid, comps_c, deg_scale, evo, dnf_lap, tag, vbonus, seedtag, skip=()):
         self.seed(seedtag)
+        saved = self.nums; self.nums = [n for n in saved if n not in skip]; grid = [n for n in grid if n not in skip]        # riders that are out do not race
         laps, cum, dnf = self._race(nlaps, grid, comps_c, deg_scale, evo, dnf_lap, tag)
         out = {}
         for n in self.nums:
             out[n] = [{'n': k, 'run': 1, 't': round(t, 3), 's': self.split(n, t, 0.06), 'v': None if k == 1 else self.vspeed(n, vbonus), 'x': 0, 'p': 0,
                        'sx': [0, 0, 0, 0], 'f': 'M', 'r': c, 'nw': 1 if k == 1 else 0} for (k, t, c) in laps[n]]
         res = {n: out[n] for n in self.nums}
+        self.nums = saved
         results, _ = results_from_laps(res)
         for r in results:
             if r['num'] in dnf: r.update({'status': 'DNF', 'time': None, 'gap': None, 'laps': dnf[r['num']] - 1})
@@ -879,6 +937,12 @@ def build_circuit(circ):
     absent = [n for n in nums if grids and not any(n in g['order'] for g in grids.values())]
     if absent: log('  No toman la salida: ' + ', '.join(f'#{n}' for n in absent))
     A = api_bundle(); hist = api_history(circ)
+    outs = load_outs(circ); out_r = [n for n in outs.get('RAC', []) if n in nums] if 'RAC' not in real_sessions else []
+    wup = build_wup(found.get('WUP'), real_laps)
+    if out_r: log('  Bajas en la Carrera simulada: ' + ', '.join(f'#{n}' for n in out_r))
+    suggest = []
+    if wup and 'RAC' not in real_sessions:                                   # a rider with a bike in the weekend who did not even ride the warm-up is probably out
+        suggest = [{'num': n, 'why': 'no aparece en el WUP'} for n in nums if str(n) not in wup['riders'] and n not in out_r]
     sprl = real_sessions['SPR']['nlaps'] if 'SPR' in real_sessions else (grids.get('SPR', {}).get('laps') or hist_laps(hist, 'SPR') or circ['sprintLaps'])
     racl = real_sessions['RAC']['nlaps'] if 'RAC' in real_sessions else (grids.get('RAC', {}).get('laps') or hist_laps(hist, 'RAC') or circ['raceLaps'])
     sim = Sim(nums, fri, circ['salt'])
@@ -907,7 +971,7 @@ def build_circuit(circ):
         if r_off is not None and s_off is not None:
             sim.race_shift = r_off - s_off
             log(f'  Calibración: ritmo medio de la Sprint real = ideal de viernes +{r_off:.2f} s (simulación limpia +{s_off:.2f}) -> la carrera simulada se desplaza +{sim.race_shift:.2f} s/vta')
-    sim_sessions['RAC'] = sim.race('RAC', racl, sim_grid('RAC'), ['M', 'M', 'H'], 1.0, sim.SAT_EVO, 9, 13, 0.2, 6)
+    sim_sessions['RAC'] = sim.race('RAC', racl, sim_grid('RAC'), ['M', 'M', 'H'], 1.0, sim.SAT_EVO, 9, 13, 0.2, 6, skip=out_r)
     for s in sim_sessions.values(): s['riders'] = compact_riders(s['riders'], nums)
     sessions = {sid: real_sessions.get(sid) or sim_sessions[sid] for sid in SIDS}
     simulated_overrides = {sid: sim_sessions[sid] for sid in SIM_SIDS if sid in real_sessions}
@@ -943,6 +1007,8 @@ def build_circuit(circ):
         try:
             rs = next((x for x in json.loads(evf.read_text(encoding='utf8')).get('sessions', []) if x.get('sid') == 'RAC'), None)
             if rs: cinfo['raceDate'], cinfo['raceHour'] = rs['date'][:10], int(rs['date'][11:13])
+            sp = next((x for x in json.loads(evf.read_text(encoding='utf8')).get('sessions', []) if x.get('sid') == 'SPR'), None)
+            if sp: cinfo['sprHour'] = int(sp['date'][11:13])
         except Exception as e: log(f'  ! evento.json ilegible: {e}')
     if hist:
         cinfo['hist'] = hist
@@ -958,6 +1024,7 @@ def build_circuit(circ):
         if gs == 'SPR' and 'SPR' in real_sessions: real_sessions['SPR']['official']['docs']['grid'] = g['doc']
     return {
         'circuit': cinfo,
+        'outs': {'RAC': out_r}, 'wup': wup, 'outsSuggest': suggest,
         'riders': riders, 'sessions': sessions, 'sim': simulated_overrides, 'grids': grids, 'event': {k: v for k, v in event.items() if k in ('entry', 'bio', 'evtspd', 'outOfEvent')},
         'meta': {'real': [s for s in SIDS if s in real_sessions], 'built': time.strftime('%Y-%m-%d %H:%M:%S'),
                  'sources': {s: real_sessions[s]['source'] for s in real_sessions},

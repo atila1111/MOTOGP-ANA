@@ -2,6 +2,15 @@
 
 Cada versión añade funcionalidades sobre la anterior. La versión actual se ve en la cabecera del panel (debajo del nombre) y en `VERSION` de `tools/pipeline.py`.
 
+## 0.8.0 · 8 nov 2026 · Bajas del domingo y WUP
+
+- **Panel «Bajas y WUP del domingo»** en el simulador de carrera: marca los pilotos que no toman la salida y se recalcula la Carrera simulada (Top 3 de Domingo, simulador, comparativas) sin ellos; los que van detrás suben un puesto en la parrilla. Se guarda en `<CIRCUITO>/bajas.json` (con el servidor en marcha; sin él, se puede escribir a mano `{"RAC": [63]}`).
+- **WUP del domingo:** el descargador baja la sesión de calentamiento a `<CIRCUITO>/WUP/` y el panel muestra quién rodó, mejor tiempo, vueltas, neumático delantero/trasero y punta, con las condiciones de pista. No entra en la predicción de ritmo (son 4–6 vueltas sin carga de carrera), pero **detecta posibles bajas**: un piloto que no aparece en el WUP se propone como baja con un clic.
+- **Panel «WUP del domingo · índice de preparación»** (pestaña Resumen): mejor vuelta, gap, vueltas dadas y válidas, consistencia, neumático, evolución respecto al sábado (gap al mejor de FP2, que cancela la mejora de pista común a todos), puestos que sube o baja, un **índice experimental 0–100** (50 % ritmo, 30 % evolución, 20 % consistencia) y una lectura (Mejora, Consistente, Investigar). Después de la carrera añade el resultado real. Contrastado con Malasia (14 pilotos): el puesto en el WUP correlaciona 0,80 con el resultado, igual que FP2 (0,81), y el índice compuesto sale peor (0,37), así que es informativo y **no entra en la predicción**.
+- **Distribución por puesto en el simulador de carrera:** tabla con el % de las simulaciones que acaba cada piloto en cada posición (P1…Pn y abandono), además del % de victoria y podio.
+- **Previsión de Open-Meteo calibrada de noche:** si la carrera es a la misma hora que la Sprint real y no hay sol, la temperatura de pista estimada usa el calor residual que midió la Sprint en lugar de la fórmula con radiación solar (en Catar daba 31° frente a los 33° medidos).
+- La previsión de Open-Meteo se pide siempre para el circuito activo, con sus coordenadas y la fecha y hora de la carrera que da la API.
+
 ## 0.7.1 · 6 nov 2026 · Catar y lectura de los PDF de Lusail
 
 - **Corrección:** los PDF de Lusail (Catar) empiezan con etiquetas sueltas antes del título y no se reconocían, así que el circuito seguía «pendiente» aunque estuvieran descargados. Ahora se detectan y Catar se activa con FP1 y PR reales (también se reconocen los PDF antiguos de Mandalika).

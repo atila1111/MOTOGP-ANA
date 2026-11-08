@@ -39,8 +39,8 @@ API = 'https://api.pulselive.motogp.com/motogp/v1'
 FILES = 'https://resources.motogp.com/files/results'
 UA = {'User-Agent': 'Mozilla/5.0 (motogp-ana pdf fetch)'}
 PAUSE = 0.2
-SID_DIR = {('FP', 1): 'FP1', ('PR', None): 'PR', ('FP', 2): 'FP2', ('Q', 1): 'Q1', ('Q', 2): 'Q2', ('SPR', None): 'SPRINT', ('RAC', None): 'RACE'}
-SID_KEY = {'FP1': 'FP1', 'PR': 'PR', 'FP2': 'FP2', 'Q1': 'Q1', 'Q2': 'Q2', 'SPRINT': 'SPR', 'RACE': 'RAC'}
+SID_DIR = {('FP', 1): 'FP1', ('PR', None): 'PR', ('FP', 2): 'FP2', ('Q', 1): 'Q1', ('Q', 2): 'Q2', ('SPR', None): 'SPRINT', ('WUP', None): 'WUP', ('RAC', None): 'RACE'}
+SID_KEY = {'FP1': 'FP1', 'PR': 'PR', 'FP2': 'FP2', 'Q1': 'Q1', 'Q2': 'Q2', 'SPRINT': 'SPR', 'WUP': 'WUP', 'RACE': 'RAC'}
 SKIP = {'session'}                                          # el bundle completo (1 MB por sesion) solo se baja como respaldo o con --bundle
 EVENT_DOCS = ['Entry.pdf', 'EntryBiographical.pdf', 'EventMaximumSpeed.pdf']        # en <año>/<EVT>/MotoGP/ (no los enlaza la API de sesiones)
 # pestaña «Championship Results» de motogp.com -> (ruta bajo <año>/<EVT>/, nombre local en <CIRCUITO>/CAMPEONATO/). Unos cuelgan del evento y otros de MotoGP/.

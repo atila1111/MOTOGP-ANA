@@ -288,7 +288,8 @@ Pestanas:
                          ranking TOP 10 de ritmo y velocidad y un veredicto
                          sobre si el lider se escapo por los pases de detras
                          (mide si ir pegado a otro costaba tiempo).
-   Simulador de carrera  simulacion Monte Carlo vuelta a vuelta de la
+   Simulador de carrera  (incluye el panel de bajas y WUP del domingo, 6.2)
+                         simulacion Monte Carlo vuelta a vuelta de la
                          Carrera (ver apartado 6.1)
    Prediccion vs         lo que se predijo en cada hito frente a la
    Realidad              realidad (real, o simulada si aun no hay PDF):
@@ -345,6 +346,18 @@ Notas de lectura:
      caidas ni sanciones. El diagnostico solo SUGIERE causas; usa los
      datos oficiales (meteo e incidentes de la Classification) cuando
      existen.
+
+
+6.2 Bajas del domingo y WUP
+    Si un piloto no va a tomar la salida (lesion, baja), marcalo en el panel
+    "Bajas y WUP del domingo" del Simulador de carrera y pulsa "Guardar bajas
+    y recalcular": la Carrera simulada se rehace sin el y los de atras suben
+    un puesto. Queda en CIRCUITO/bajas.json ({"RAC": [63]}); borrar el fichero
+    quita las bajas. Solo afecta a la Carrera mientras no haya PDF reales.
+    El WUP (calentamiento del domingo) se baja a CIRCUITO/WUP/; no entra en la
+    prediccion de ritmo, pero el panel lo muestra y propone como baja a quien
+    no aparezca en el. El panel "WUP del domingo" (pestana Resumen) calcula un
+    indice de preparacion experimental; es solo informativo.
 
 
 7. DESPLIEGUE
@@ -427,10 +440,20 @@ calibrar con suficientes fines de semana reales: tomalas como orientativas.
 
 11. VERSIONES Y FUNCIONALIDADES NUEVAS
 ---------------------------------------------------------------------
-Version actual: 0.7.1. La lista completa de funcionalidades esta en
+Version actual: 0.8.0. La lista completa de funcionalidades esta en
 README.md; esto es lo que aporto cada version (mismo contenido que
 CHANGELOG.md, que es el que se mantiene primero).
 Cada version anade funcionalidades sobre la anterior. La version actual se ve en la cabecera del panel (debajo del nombre) y en VERSION de tools/pipeline.py.
+
+Version 0.8.0 - 8 nov 2026 - Bajas del domingo y WUP
+----------------------------------------------------
+
+  - Panel "Bajas y WUP del domingo" en el simulador de carrera: marca los pilotos que no toman la salida y se recalcula la Carrera simulada (Top 3 de Domingo, simulador, comparativas) sin ellos; los que van detras suben un puesto. Se guarda en CIRCUITO/bajas.json (con el servidor en marcha; sin el, se puede escribir a mano {"RAC": [63]}).
+  - WUP del domingo: el descargador baja el calentamiento a CIRCUITO/WUP/ y el panel muestra quien roda, mejor tiempo, vueltas, neumatico delantero/trasero y punta, con las condiciones de pista. No entra en la prediccion de ritmo (son 4-6 vueltas sin carga de carrera), pero detecta posibles bajas: un piloto que no aparece en el WUP se propone como baja con un clic.
+  - Panel "WUP del domingo - indice de preparacion" (pestana Resumen): mejor vuelta, gap, vueltas dadas y validas, consistencia, neumatico, evolucion respecto al sabado (gap al mejor de FP2, que cancela la mejora de pista comun a todos), puestos que sube o baja, un indice experimental 0-100 (50% ritmo, 30% evolucion, 20% consistencia) y una lectura (Mejora, Consistente, Investigar). Tras la carrera anade el resultado real. Contrastado con Malasia (14 pilotos): el puesto en el WUP correlaciona 0,80 con el resultado, igual que FP2 (0,81), y el indice compuesto sale peor (0,37): es informativo y no entra en la prediccion.
+  - Distribucion por puesto en el simulador de carrera: tabla con el % de las simulaciones que acaba cada piloto en cada posicion (P1...Pn y abandono), ademas del % de victoria y podio.
+  - Prevision de Open-Meteo calibrada de noche: si la carrera es a la misma hora que la Sprint real y no hay sol, la temperatura de pista estimada usa el calor residual que midio la Sprint en lugar de la formula con radiacion solar.
+  - La prevision de Open-Meteo se pide siempre para el circuito activo, con sus coordenadas y la fecha y hora de la carrera que da la API.
 
 Version 0.7.1 - 6 nov 2026 - Catar y lectura de los PDF de Lusail
 -----------------------------------------------------------------
